@@ -1,6 +1,6 @@
 # CarryOn
 
-CarryOn keeps your Claude Code and Codex work going through usage limits. It runs in the background on Windows, checks plan usage every minute without spending any, emails you when a limit runs out, finds the session that was cut off, waits for a confirmed reset, asks Gemini whether continuing is worthwhile, and resumes the session by ID.
+CarryOn keeps your Claude Code and Codex work going through usage limits. It runs in the background on Windows, checks plan usage every minute without spending any, waits for a confirmed reset, asks Gemini whether continuing is worthwhile, and resumes the session by ID. It emails you when a limit comes back and when a resumed run finishes — never when a limit runs out.
 
 It never sends a prompt while checking usage. It never reads Claude or Codex auth files.
 
@@ -10,10 +10,10 @@ It never sends a prompt while checking usage. It never reads Claude or Codex aut
    - **Codex:** the native `codex app-server` via `account/rateLimits/read`.
    - **Claude Code:** the `get_usage` control request in stream-json mode, the same numbers behind `/usage`.
 2. A window at 100% becomes one incident, recorded once per provider + window + reset time.
-3. It finds the newest session log whose last real event is a usage-limit error. If none is found, the email says so and nothing is resumed.
+3. It finds the newest session log whose last real event is a usage-limit error. No email is sent at this point. If no session is found, it searches again at reset.
 4. At reset time it takes a fresh reading. The reset counts only when the reading is after the reset, under two minutes old, for the same account, with no window still at 100%.
 5. It asks Gemini for a decision, then resumes by session ID when told to.
-6. It emails you when it resumes and when it finishes, including the decision and reason, the agent's last message, and the files it changed.
+6. Once the reset is confirmed it sends one email leading with "<provider> is back — " and saying what it did: resuming in a folder, nothing to resume, or skipped with a reason. When a resumed run finishes it sends a second email with the decision, the agent's last message, and the files it changed.
 
 ## How the agent decides
 
@@ -30,7 +30,7 @@ After a resume, Gemini receives the exit status, `git diff --stat`, a bounded di
 | Action | Meaning |
 | --- | --- |
 | `done` | The task is complete |
-| `resume_again` | One more short run is justified (max 2 resumes total) |
+| `resume_again` | One more short run is justified (max 2 resumes per limit hit) |
 | `stop` | Stop and report |
 
 Examples:
@@ -58,7 +58,7 @@ Every resume prompt starts with a fixed instruction:
 
 Gemini's next-step prompt is capped at 500 characters. Session text, diffs, and test output are sent to Gemini inside explicit "untrusted" delimiters, and the system instruction tells the model to ignore instructions found inside them.
 
-Each session is resumed at most twice. A run interrupted by a crash consumes an attempt and is never restarted without a new Gemini decision.
+Each limit hit allows at most two resumes for its cut-off session. A run interrupted by a crash consumes an attempt and is never restarted without a new Gemini decision.
 
 ## Crash safety
 
@@ -109,7 +109,7 @@ The default recipient is `prajwalchahande07@gmail.com` and the default sender is
 | `codex_bin` | empty | Optional explicit native Codex executable |
 | `poll_seconds` | `60` | Usage poll interval |
 | `resume_timeout_minutes` | `360` | Hard limit for one agent run |
-| `max_resumes` | `2` | Total resumes per session |
+| `max_resumes` | `2` | Total resumes per limit hit |
 | `session_tail_chars` | `16000` | Session tail sent to Gemini |
 | `decision_prompt_chars` | `500` | Cap on Gemini's next-step prompt |
 
@@ -245,9 +245,11 @@ Policy changes are recorded here as the build evolves.
 
 - **2026-10-26 — Resume by ID.** The spec's `-s` flag is rejected by `codex exec resume` on Codex 0.163.0, so CarryOn uses `-c sandbox_mode="workspace-write"`. Resumes target explicit session IDs, so the "must be newest" check was replaced by an "already continued" check.
 - **2026-10-26 — Untrusted session text.** Session logs, diffs, and test output are framed as data. Gemini prompts are capped at 500 characters and every resume prompt starts with a fixed instruction.
-- **2026-10-26 — Two resumes maximum.** The first resume plus one more. A crash consumes an attempt and requires a new decision.
+- **2026-10-26 — Two resumes maximum per limit hit.** The first resume plus one more, with a fresh budget for each new incident. A crash consumes an attempt and requires a new decision.
 - **2026-10-26 — Gemini failure blocks.** No decision means no resume; the incident becomes `blocked` and an email explains why.
 - **2026-10-26 — Job objects.** All agent processes are started suspended, assigned to a kill-on-close job, then resumed.
 - **2026-10-26 — Simulate.** `carryon simulate` fakes only the limit and reset; Gemini, the agent, and email are real and labelled SIMULATED.
 - **2026-10-26 — No doctor command.** `status` and `decisions` cover inspection.
 - **2026-10-26 — Redaction covers AKIA and github_pat_.** Added to the existing pattern set.
+- **2026-10-26 — Email only when a limit comes back.** The run-out email and the separate resume-start email were removed. After a reset is confirmed, CarryOn sends exactly one "back" email saying what it did (resuming, nothing to resume, or skipped with a reason). The finish email and the 24-hour needs-you email remain. `simulate` follows the same rules and is labelled SIMULATED.
+- **2026-10-26 — Global single-instance mutex.** `watch` takes `Global\CarryOn`, so an S4U watcher in another Windows session still blocks a second watcher. `simulate` no longer takes the lock; the watcher skips simulated incidents.
