@@ -421,3 +421,100 @@ func TestCutOffFoundAtResetWhenMissingInitially(t *testing.T) {
 		t.Fatalf("reset-time search should resume the session, got %d runs", h.runner.calls)
 	}
 }
+
+func copyCodexFixture(t *testing.T, root string) {
+	t.Helper()
+	source := filepath.Join("..", "session", "testdata", "codex", "cutoff", "2026", "10", "26", "rollout-2026-10-26T09-50-00-01a17756-0de8-7fd1-87b3-57ef7c572450.jsonl")
+	data, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatalf("read codex fixture: %v", err)
+	}
+	target := filepath.Join(root, "2026", "10", "26")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "rollout-2026-10-26T09-50-00-01a17756-0de8-7fd1-87b3-57ef7c572450.jsonl"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStuckIncidentDoesNotBlockAnotherProvider(t *testing.T) {
+	claudeRoot := t.TempDir()
+	codexRoot := t.TempDir()
+	copyFixture(t, claudeRoot)
+	copyCodexFixture(t, codexRoot)
+
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	reset := now.Add(2 * time.Minute)
+	claudeProvider := &fakeProvider{name: "claude", snapshot: quota.Snapshot{
+		Provider: "claude", AccountID: "acct", ObservedAt: now.Add(-time.Minute),
+		Windows: []quota.Window{{ID: "claude:five_hour", Label: "5-hour", UsedPercent: 100, ResetsAt: reset, Duration: 5 * time.Hour}},
+	}}
+	codexProvider := &fakeProvider{name: "codex", snapshot: quota.Snapshot{
+		Provider: "codex", AccountID: "acct", ObservedAt: now.Add(-time.Minute),
+		Windows: []quota.Window{{ID: "codex:primary", Label: "5-hour", UsedPercent: 100, ResetsAt: reset, Duration: 5 * time.Hour}},
+	}}
+	db, err := store.Open(filepath.Join(t.TempDir(), "state.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	decider := &fakeDecider{results: []decision.Result{
+		{Action: decision.ActionResume, Reason: "continue", Prompt: "finish it"},
+		{Action: decision.ActionDone, Reason: "done"},
+	}}
+	runner := &fakeRunner{outcome: resume.Outcome{LastMessage: "done"}}
+built := &Engine{
+		DB: db, Config: config.Defaults(),
+		Providers: []quota.Provider{claudeProvider},
+		Scanner:   session.Scanner{ClaudeRoot: claudeRoot, CodexRoot: codexRoot, MaxBytes: 8 << 20},
+		Decider:   decider, Runner: runner, Sender: &fakeSender{},
+		Log: logx.Discard(), Now: func() time.Time { return now }, Synchronous: true,
+	}
+	if err := built.Step(context.Background()); err != nil {
+		t.Fatalf("first step: %v", err)
+	}
+	// The Codex incident is detected a minute later, so Claude is the oldest due one.
+	now = now.Add(time.Minute)
+	built.Providers = []quota.Provider{claudeProvider, codexProvider}
+	if err := built.Step(context.Background()); err != nil {
+		t.Fatalf("second step: %v", err)
+	}
+
+	// At reset Claude is still exhausted; only Codex can confirm.
+	now = now.Add(3 * time.Minute)
+	claudeProvider.snapshot.ObservedAt = now
+	claudeProvider.snapshot.Windows[0].ResetsAt = now.Add(5 * time.Hour)
+	codexProvider.snapshot.ObservedAt = now
+	allowed := true
+	codexProvider.snapshot.OrdinaryUsageAllowed = &allowed
+	codexProvider.snapshot.Windows[0].UsedPercent = 0
+	codexProvider.snapshot.Windows[0].ResetsAt = now.Add(5 * time.Hour)
+	if err := built.Step(context.Background()); err != nil {
+		t.Fatalf("second step: %v", err)
+	}
+
+	if runner.calls != 1 {
+		t.Fatalf("codex should resume despite the stuck claude incident, calls=%d", runner.calls)
+	}
+	if runner.specs[0].Provider != "codex" {
+		t.Fatalf("wrong provider resumed: %s", runner.specs[0].Provider)
+	}
+}
+
+func TestUnconfirmedResetExpiresAfter24Hours(t *testing.T) {
+	h := newHarness(t)
+	h.step(t)
+	h.engine.Now = func() time.Time { return h.now.Add(25 * time.Hour) }
+	h.provider.snapshot.ObservedAt = h.now.Add(25 * time.Hour)
+	h.step(t)
+
+	incidents, _ := h.db.Incidents(context.Background())
+	if incidents[0].State != store.IncidentBlocked {
+		t.Fatalf("incident should be blocked after 24h: %+v", incidents[0])
+	}
+	last := h.sender.sent[len(h.sender.sent)-1]
+	if !strings.Contains(last.Body, "24 hours") {
+		t.Fatalf("expected a 24-hour reason:\n%s", last.Body)
+	}
+}

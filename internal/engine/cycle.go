@@ -14,41 +14,51 @@ import (
 	"github.com/ph03iA/CarryOn/internal/store"
 )
 
-// runCycle confirms the reset, decides, and runs up to the attempt budget.
-func (e *Engine) runCycle(ctx context.Context, incident store.Incident) error {
+// prepareCycle confirms the reset and returns the session to resume. ok is
+// false when the reset is not confirmed yet, so another incident can be tried.
+func (e *Engine) prepareCycle(ctx context.Context, incident store.Incident) (store.Incident, session.Session, bool, error) {
 	if incident.SessionID == "" {
 		attached, err := e.attachCutOffSession(ctx, incident)
 		if err != nil {
-			return e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
+			return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
 		}
 		incident = attached
 	}
 	found, err := e.sessionFor(incident)
 	if err != nil {
-		return e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
+		return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
 	}
 	if !incident.Simulated {
 		confirmed, err := e.confirmReset(ctx, incident)
 		if err != nil {
 			e.logErr("confirm reset: %v", err)
-			return nil
+			return incident, session.Session{}, false, nil
 		}
 		if !confirmed {
 			e.logf("%s reset not confirmed yet; will retry", incident.Provider)
-			return nil
+			return incident, session.Session{}, false, nil
 		}
 	}
 	continued, err := e.Scanner.Continued(found)
 	if err != nil {
-		return e.closeIncident(ctx, incident, store.IncidentBlocked, "could not read the session log: "+err.Error())
+		return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentBlocked, "could not read the session log: "+err.Error())
 	}
 	if continued {
-		return e.skipContinued(ctx, incident, found)
+		return incident, session.Session{}, false, e.skipContinued(ctx, incident, found)
 	}
 	if err := e.DB.UpdateIncident(ctx, incident.ID, incidentUpdate(incident, store.IncidentDeciding, "reset confirmed")); err != nil {
+		return incident, session.Session{}, false, err
+	}
+	return incident, found, true, nil
+}
+
+// runCycle prepares and runs an incident inline. simulate uses it.
+func (e *Engine) runCycle(ctx context.Context, incident store.Incident) error {
+	prepared, found, ok, err := e.prepareCycle(ctx, incident)
+	if err != nil || !ok {
 		return err
 	}
-	return e.decideAndResume(ctx, incident, found)
+	return e.decideAndResume(ctx, prepared, found)
 }
 
 // sessionFor reloads the session by id, falling back to the stored path.

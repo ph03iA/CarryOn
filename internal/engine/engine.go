@@ -187,65 +187,6 @@ if !ok {
 }
 
 // advance starts the next due resume, in the background unless synchronous.
-func (e *Engine) advance(ctx context.Context) []error {
-	e.mu.Lock()
-	busy := e.running
-	e.mu.Unlock()
-	if busy {
-		return nil
-	}
-	incident, ok, err := e.nextDueIncident(ctx)
-	if err != nil {
-		return []error{err}
-	}
-	if !ok {
-		return nil
-	}
-	e.mu.Lock()
-	if e.running {
-		e.mu.Unlock()
-		return nil
-	}
-	e.running = true
-	e.mu.Unlock()
-
-	if e.Synchronous {
-		defer e.finishRun()
-		if err := e.runCycle(ctx, incident); err != nil {
-			return []error{err}
-		}
-		return nil
-	}
-	go func() {
-		defer e.finishRun()
-		if err := e.runCycle(context.WithoutCancel(ctx), incident); err != nil {
-			e.logErr("resume cycle: %v", err)
-		}
-	}()
-	return nil
-}
-
-func (e *Engine) finishRun() {
-	e.mu.Lock()
-	e.running = false
-	e.mu.Unlock()
-}
-
-// nextDueIncident returns the oldest incident whose reset time has passed.
-func (e *Engine) nextDueIncident(ctx context.Context) (store.Incident, bool, error) {
-	incidents, err := e.DB.Incidents(ctx, store.IncidentAwaitingReset)
-	if err != nil {
-		return store.Incident{}, false, err
-	}
-	for _, incident := range incidents {
-		if incident.ResetAt.After(e.now()) {
-			continue
-		}
-		return incident, true, nil
-	}
-	return store.Incident{}, false, nil
-}
-
 // provider returns the reader for a provider name.
 func (e *Engine) provider(name string) quota.Provider {
 	for _, provider := range e.Providers {
