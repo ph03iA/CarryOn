@@ -34,8 +34,8 @@ func (f *fakeProvider) Read(context.Context) (quota.Snapshot, error) {
 }
 
 type fakeDecider struct {
-	results []decision.Result
-	errs    []error
+	results  []decision.Result
+	errs     []error
 	calls    int
 	last     decision.Request
 	requests []decision.Request
@@ -278,10 +278,7 @@ func TestCrashUsesThePostRunDecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A crashed run: claimed, running, and it wrote to the session log.
-	if _, err := h.db.ClaimResume(context.Background(), resumeRow.ID, 2, "first prompt"); err != nil {
-		t.Fatal(err)
-	}
-	if err := h.db.StartResume(context.Background(), resumeRow.ID, "d1"); err != nil {
+	if _, err := h.db.ClaimResume(context.Background(), resumeRow.ID, 2, "first prompt", "d1"); err != nil {
 		t.Fatal(err)
 	}
 	appendSessionEvent(t, h.root, `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Edited retry.go before the crash."}]},"uuid":"e0000000-0000-4000-8000-000000000009","timestamp":"2026-10-26T12:01:00.000Z","cwd":"C:\\work\\demo"}`)
@@ -497,7 +494,7 @@ func TestStuckIncidentDoesNotBlockAnotherProvider(t *testing.T) {
 		{Action: decision.ActionDone, Reason: "done"},
 	}}
 	runner := &fakeRunner{outcome: resume.Outcome{LastMessage: "done"}}
-built := &Engine{
+	built := &Engine{
 		DB: db, Config: config.Defaults(),
 		Providers: []quota.Provider{claudeProvider},
 		Scanner:   session.Scanner{ClaudeRoot: claudeRoot, CodexRoot: codexRoot, MaxBytes: 8 << 20},

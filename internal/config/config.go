@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
@@ -241,9 +240,4 @@ func ChildEnvironment() []string {
 		cleaned = append(cleaned, entry)
 	}
 	return cleaned
-}
-
-// Platform is reported in status output.
-func Platform() string {
-	return runtime.GOOS
 }

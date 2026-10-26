@@ -173,6 +173,10 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - Print-mode permissions can still block edits even with `acceptEdits` / `workspace-write`.
 - Claude models can omit a window after it resets; an omitted window is treated as available.
 - A crash after a resume starts consumes one attempt; further resumes need a fresh decision.
+- The two-resume budget is per limit incident, not per session forever. A session cut off by a later window gets a fresh budget.
+- "Files changed" compares against a stash snapshot taken before the run, so your pre-existing uncommitted work is not reported.
+- One instance only: `watch` and `simulate` take a named mutex and exit if another CarryOn holds it.
+- The cut-off search only accepts sessions written after the current window started, and retries once at reset time.
 - Resend idempotency keys expire after 24 hours. The outbox retries within that window.
 - Windows only. There are no systemd or launchd service files.
 - The logon task prefers `-LogonType S4U`, so it runs without a console window. If Windows needs admin rights or a "Log on as a batch job" policy, CarryOn falls back to an interactive logon task, which may briefly show a console window.

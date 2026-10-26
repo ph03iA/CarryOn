@@ -129,7 +129,7 @@ func claudeLimitError(record claudeRecord, text string) bool {
 type codexRecord struct {
 	Type      string `json:"type"`
 	Timestamp string `json:"timestamp"`
-Payload struct {
+	Payload   struct {
 		Type             string          `json:"type"`
 		ID               string          `json:"id"`
 		Role             string          `json:"role"`
@@ -380,20 +380,6 @@ func (s Scanner) FindByID(provider, id string) (Session, error) {
 		return found, err
 	}
 	return Session{}, ErrNotFound
-}
-
-// LastMessage returns the last assistant message recorded in a session.
-func (s Scanner) LastMessage(found Session) string {
-	lines, err := readTail(found.Path, s.MaxBytes)
-	if err != nil {
-		return ""
-	}
-	for index := len(lines) - 1; index >= 0; index-- {
-		if text := assistantText(found.Provider, lines[index].Data); text != "" {
-			return summarize(text)
-		}
-	}
-	return ""
 }
 
 func assistantText(provider string, data []byte) string {

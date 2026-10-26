@@ -23,24 +23,24 @@ const (
 
 // Incident is one exhausted usage limit, recorded once.
 type Incident struct {
-	ID           string
-	Provider     string
-	AccountID    string
-	WindowID     string
-	WindowLabel  string
-	UsedPercent  float64
-	ResetAt      time.Time
-	DetectedAt   time.Time
-	State        string
-	SessionID    string
-	SessionPath  string
-	SessionCwd   string
-	CutOffAt      time.Time
-	CutOffOffset  int64
+	ID             string
+	Provider       string
+	AccountID      string
+	WindowID       string
+	WindowLabel    string
+	UsedPercent    float64
+	ResetAt        time.Time
+	DetectedAt     time.Time
+	State          string
+	SessionID      string
+	SessionPath    string
+	SessionCwd     string
+	CutOffAt       time.Time
+	CutOffOffset   int64
 	WindowDuration time.Duration
-	Simulated     bool
-	Reason        string
-	UpdatedAt     time.Time
+	Simulated      bool
+	Reason         string
+	UpdatedAt      time.Time
 }
 
 // IncidentKey is stable for one provider, account, window and reset time.
@@ -157,25 +157,6 @@ func (d *DB) UpdateIncident(ctx context.Context, id string, update IncidentUpdat
 		return fmt.Errorf("update incident: %w", err)
 	}
 	return nil
-}
-
-// IncidentsWithCutOffSessions returns incidents that found a session to resume.
-func (d *DB) IncidentsWithCutOffSessions(ctx context.Context) ([]Incident, error) {
-	rows, err := d.db.QueryContext(ctx, "SELECT "+incidentColumns+
-		" FROM incidents WHERE session_id<>'' ORDER BY detected_at DESC")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var incidents []Incident
-	for rows.Next() {
-		incident, err := scanIncident(rows)
-		if err != nil {
-			return nil, err
-		}
-		incidents = append(incidents, incident)
-	}
-	return incidents, rows.Err()
 }
 
 func placeholders(count int) string {

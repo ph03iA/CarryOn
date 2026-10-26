@@ -174,10 +174,6 @@ func migrate(db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("initialize schema: %w", err)
 	}
-	if version == 1 {
-		// v2 adds the byte offset used by the already-continued check.
-		_, _ = db.ExecContext(ctx, "ALTER TABLE incidents ADD COLUMN cut_off_offset INTEGER NOT NULL DEFAULT 0")
-	}
 	if version > 0 && version < 3 {
 		// v3 records the window length so the cut-off search can be bounded.
 		_, _ = db.ExecContext(ctx, "ALTER TABLE incidents ADD COLUMN window_duration INTEGER NOT NULL DEFAULT 0")

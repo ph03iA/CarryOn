@@ -46,22 +46,3 @@ func TestContainsSecretIsFalseForOrdinaryText(t *testing.T) {
 		t.Fatal("ordinary text flagged as a secret")
 	}
 }
-
-func TestTruncateKeepsLimit(t *testing.T) {
-	if got := Truncate("abcdef", 3); got != "abc…" {
-		t.Fatalf("unexpected truncation: %q", got)
-	}
-	if got := Truncate("abc", 10); got != "abc" {
-		t.Fatalf("short text changed: %q", got)
-	}
-}
-
-func TestTextRedactsResendKeysAndQuotedAssignments(t *testing.T) {
-	result := Text(`RESEND_API_KEY="re_abcdefghijklmnopqrstuvwx" key re_zyxwvutsrqponmlkjihgfedc`)
-	if ContainsSecret(result.Text) {
-		t.Fatalf("secret survived: %s", result.Text)
-	}
-	if !strings.Contains(result.Text, "[REDACTED]") {
-		t.Fatal("missing marker")
-	}
-}

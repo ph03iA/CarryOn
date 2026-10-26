@@ -53,18 +53,15 @@ func TestClaimResumeConsumesOneAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	claimed, err := db.ClaimResume(ctx, resume.ID, 2, "go on")
+	claimed, err := db.ClaimResume(ctx, resume.ID, 2, "go on", "")
 	if err != nil || !claimed {
 		t.Fatalf("first claim: claimed=%v err=%v", claimed, err)
 	}
-	claimed, err = db.ClaimResume(ctx, resume.ID, 2, "go on")
+	claimed, err = db.ClaimResume(ctx, resume.ID, 2, "go on", "")
 	if err != nil || claimed {
 		t.Fatalf("second claim must fail while claimed: claimed=%v err=%v", claimed, err)
 	}
 
-	if err := db.StartResume(ctx, resume.ID, "d1"); err != nil {
-		t.Fatal(err)
-	}
 	if err := db.FinishResume(ctx, resume.ID, 0, "done", "a.go"); err != nil {
 		t.Fatal(err)
 	}
@@ -86,18 +83,15 @@ func TestClaimResumeStopsAtBudget(t *testing.T) {
 	}
 
 	for attempt := 1; attempt <= 2; attempt++ {
-		if claimed, err := db.ClaimResume(ctx, resume.ID, 2, "go on"); err != nil || !claimed {
+		if claimed, err := db.ClaimResume(ctx, resume.ID, 2, "go on", ""); err != nil || !claimed {
 			t.Fatalf("attempt %d: claimed=%v err=%v", attempt, claimed, err)
-		}
-		if err := db.StartResume(ctx, resume.ID, "d"); err != nil {
-			t.Fatal(err)
 		}
 		if err := db.FinishResume(ctx, resume.ID, 0, "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	claimed, err := db.ClaimResume(ctx, resume.ID, 2, "go on")
+	claimed, err := db.ClaimResume(ctx, resume.ID, 2, "go on", "")
 	if err != nil || claimed {
 		t.Fatalf("third claim must be refused: claimed=%v err=%v", claimed, err)
 	}
@@ -150,10 +144,7 @@ func TestReconcileInterruptedMarksRunningRuns(t *testing.T) {
 	if _, err := db.CreateResume(ctx, &resume); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ClaimResume(ctx, resume.ID, 2, "p"); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.StartResume(ctx, resume.ID, "d"); err != nil {
+	if _, err := db.ClaimResume(ctx, resume.ID, 2, "p", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -185,5 +176,28 @@ func TestResumeIsUniquePerIncident(t *testing.T) {
 	duplicate := Resume{IncidentID: "i1", Provider: "claude", SessionID: "same", Cwd: `C:\a`}
 	if created, err := db.CreateResume(ctx, &duplicate); err != nil || created {
 		t.Fatalf("duplicate incident resume must be ignored: created=%v err=%v", created, err)
+	}
+}
+
+func TestClaimResumeStartsTheRunInOneWrite(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	resume := Resume{IncidentID: "i1", Provider: "claude", SessionID: "started", Cwd: `C:\a`}
+	if _, err := db.CreateResume(ctx, &resume); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := db.ClaimResume(ctx, resume.ID, 2, "prompt", "decision-1")
+	if err != nil || !claimed {
+		t.Fatalf("claim: claimed=%v err=%v", claimed, err)
+	}
+	stored, err := db.Resume(ctx, resume.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.State != ResumeRunning {
+		t.Fatalf("claim should mark the run running, got %s", stored.State)
+	}
+	if stored.StartedAt.IsZero() || stored.DecisionID != "decision-1" {
+		t.Fatalf("claim should set started_at and decision: %+v", stored)
 	}
 }

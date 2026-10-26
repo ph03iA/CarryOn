@@ -156,7 +156,7 @@ func (e *Engine) decideAndResume(ctx context.Context, incident store.Incident, f
 		TailChars: e.Config.TailChars, PromptMax: e.Config.PromptChars,
 	})
 	if err != nil {
-		return e.blockOnDecision(ctx, incident, found, "pre", err)
+		return e.blockOnDecision(ctx, incident, "pre", err)
 	}
 	if err := e.recordDecision(ctx, incident, "", "pre", result); err != nil {
 		return err
@@ -181,7 +181,7 @@ func (e *Engine) resumeLoop(ctx context.Context, incident store.Incident, found 
 		}
 		next, err := e.postDecision(ctx, incident, found)
 		if err != nil {
-			return e.blockOnDecision(ctx, incident, found, "post", err)
+			return e.blockOnDecision(ctx, incident, "post", err)
 		}
 		if next.Action != decision.ActionResumeAgain {
 			return e.closeIncident(ctx, incident, store.IncidentFinished, next.Reason)
@@ -197,7 +197,7 @@ func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, fou
 	if err != nil {
 		return true, err
 	}
-	claimed, err := e.DB.ClaimResume(ctx, record.ID, e.Config.MaxResumes, prompt)
+	claimed, err := e.DB.ClaimResume(ctx, record.ID, e.Config.MaxResumes, prompt, "")
 	if err != nil {
 		return true, err
 	}
@@ -206,9 +206,6 @@ func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, fou
 		return true, e.closeIncident(ctx, incident, store.IncidentBlocked, message)
 	}
 	attempt := record.Attempts + 1
-	if err := e.DB.StartResume(ctx, record.ID, ""); err != nil {
-		return true, err
-	}
 	if err := e.DB.UpdateIncident(ctx, incident.ID, incidentUpdate(incident, store.IncidentResuming, reason)); err != nil {
 		return true, err
 	}
@@ -234,7 +231,6 @@ func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, fou
 		return true, err
 	}
 	e.lastOutcome = outcome
-	e.lastPrompt = prompt
 	return false, nil
 }
 
@@ -291,21 +287,14 @@ func buildRunSummary(outcome resume.Outcome) string {
 }
 
 // blockOnDecision records a fallback decision and emails the reason.
-func (e *Engine) blockOnDecision(ctx context.Context, incident store.Incident, found session.Session, stage string, cause error) error {
+func (e *Engine) blockOnDecision(ctx context.Context, incident store.Incident, stage string, cause error) error {
 	reason := "Gemini did not return a usable decision, so CarryOn did not resume: " + cause.Error()
 	if err := e.recordDecision(ctx, incident, "", stage, decision.Result{
 		Action: decision.ActionError, Reason: reason, Fallback: true,
 	}); err != nil {
 		return err
 	}
-	if err := e.closeIncident(ctx, incident, store.IncidentBlocked, reason); err != nil {
-		return err
-	}
-	return e.enqueue(ctx, "decision:"+incident.ID, mail.Event{
-		Kind: mail.KindDecisionBlock, Provider: incident.Provider, Action: "no decision",
-		Reason: reason, SessionID: found.ID, SessionCwd: found.Cwd,
-		Simulated: incident.Simulated, Now: e.now(),
-	})
+	return e.closeIncident(ctx, incident, store.IncidentBlocked, reason)
 }
 
 func (e *Engine) recordDecision(ctx context.Context, incident store.Incident, resumeID, stage string, result decision.Result) error {
@@ -377,7 +366,7 @@ func (e *Engine) resumeAfterCrash(ctx context.Context, incident store.Incident, 
 	e.lastOutcome = resume.Outcome{ExitCode: -1, LastMessage: record.LastMessage}
 	next, err := e.postDecision(ctx, incident, found)
 	if err != nil {
-		return e.blockOnDecision(ctx, incident, found, "post", err)
+		return e.blockOnDecision(ctx, incident, "post", err)
 	}
 	if next.Action == decision.ActionResumeAgain {
 		return e.resumeLoop(ctx, incident, found, next)

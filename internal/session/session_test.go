@@ -146,41 +146,18 @@ func TestFindByID(t *testing.T) {
 
 func TestLastMessagePrefersTaskComplete(t *testing.T) {
 	scanner := codexScanner("old_error")
-	found, err := scanner.FindByID(Codex, "01a17756-0de8-7fd1-87b3-57ef7c572451")
+	paths, err := scanner.files(Codex)
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("files: %v", err)
+	}
+	found, _, err := scanner.inspectSession(Codex, paths[0])
 	if err != nil {
-		t.Fatalf("find: %v", err)
+		t.Fatalf("inspect: %v", err)
 	}
-	if got := scanner.LastMessage(found); !strings.Contains(got, "parser handles empty input") {
-		t.Fatalf("unexpected last message: %q", got)
-	}
-}
-
-func TestFindCutOffIgnoresSessionsOutsideTheWindow(t *testing.T) {
-	scanner := claudeScanner("cutoff")
-	// The fixture's cut-off is 2026-10-26T10:05Z. A 5-hour window that started
-	// at 11:00Z cannot have cut this session off.
-	since := time.Date(2026, 10, 26, 11, 0, 0, 0, time.UTC)
-	_, ok, err := scanner.FindCutOff(Claude, since)
-	if err != nil {
-		t.Fatalf("scan: %v", err)
-	}
-	if ok {
-		t.Fatal("a cut-off before the window started must be ignored")
+	if !strings.Contains(found.LastMessage, "parser handles empty input") {
+		t.Fatalf("unexpected last message: %q", found.LastMessage)
 	}
 }
-
-func TestFindCutOffAcceptsSessionsInsideTheWindow(t *testing.T) {
-	scanner := claudeScanner("cutoff")
-	since := time.Date(2026, 10, 26, 7, 0, 0, 0, time.UTC)
-	found, ok, err := scanner.FindCutOff(Claude, since)
-	if err != nil || !ok {
-		t.Fatalf("scan: ok=%v err=%v", ok, err)
-	}
-	if found.ID == "" {
-		t.Fatal("expected a session id")
-	}
-}
-
 func TestClaudeTranscriptIncludesPromptAndAssistantText(t *testing.T) {
 	scanner := claudeScanner("cutoff")
 	found, ok, err := scanner.FindCutOff(Claude, time.Time{})

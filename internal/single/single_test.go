@@ -1,4 +1,3 @@
-﻿
 package single
 
 import "testing"

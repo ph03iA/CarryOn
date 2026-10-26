@@ -3,7 +3,6 @@ package redact
 
 import (
 	"regexp"
-	"strings"
 )
 
 const replacement = "[REDACTED]"
@@ -52,16 +51,4 @@ func ContainsSecret(input string) bool {
 		}
 	}
 	return false
-}
-
-// Truncate shortens text to at most max characters, appending an ellipsis.
-func Truncate(input string, max int) string {
-	if max <= 0 {
-		return ""
-	}
-	runes := []rune(input)
-	if len(runes) <= max {
-		return input
-	}
-	return strings.TrimSpace(string(runes[:max])) + "…"
 }

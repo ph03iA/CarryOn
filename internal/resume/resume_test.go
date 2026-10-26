@@ -243,7 +243,6 @@ func assertMissing(t *testing.T, files []string, unwanted string) {
 	}
 }
 
-
 func TestGitArgsDisableFSMonitor(t *testing.T) {
 	got := gitArgs([]string{"status", "--porcelain"})
 	want := []string{"-c", "core.fsmonitor=false", "status", "--porcelain"}

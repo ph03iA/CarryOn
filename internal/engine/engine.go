@@ -42,7 +42,6 @@ type Engine struct {
 	running bool
 
 	lastOutcome resume.Outcome
-	lastPrompt  string
 }
 
 func (e *Engine) now() time.Time {
@@ -180,7 +179,7 @@ func (e *Engine) announceIncident(ctx context.Context, incident store.Incident) 
 		SessionID: update.SessionID, SessionCwd: update.SessionCwd,
 		Simulated: incident.Simulated, Now: e.now(),
 	}
-if !ok {
+	if !ok {
 		event.Reason = "CarryOn found no cut-off session yet and will search again when the limit resets."
 	}
 	return e.enqueue(ctx, "limit:"+incident.ID, event)

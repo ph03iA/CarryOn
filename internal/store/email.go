@@ -155,12 +155,6 @@ func (d *DB) Emails(ctx context.Context, limit int) ([]Email, error) {
 	return emails, rows.Err()
 }
 
-// EmailByEventKey loads an email by its event key.
-func (d *DB) EmailByEventKey(ctx context.Context, eventKey string) (Email, error) {
-	row := d.db.QueryRowContext(ctx, "SELECT "+emailColumns+" FROM emails WHERE event_key=?", eventKey)
-	return scanEmail(row)
-}
-
 // ReleaseStaleLeases returns emails stuck in sending after a crash to the queue.
 func (d *DB) ReleaseStaleLeases(ctx context.Context, now time.Time) (int, error) {
 	result, err := d.db.ExecContext(ctx, `UPDATE emails

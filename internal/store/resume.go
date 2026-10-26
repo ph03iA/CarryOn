@@ -12,7 +12,6 @@ import (
 // Resume states.
 const (
 	ResumePending     = "pending"
-	ResumeClaimed     = "claimed"
 	ResumeRunning     = "running"
 	ResumeFinished    = "finished"
 	ResumeInterrupted = "interrupted"
@@ -110,28 +109,18 @@ func (d *DB) ResumeForIncident(ctx context.Context, provider, sessionID, inciden
 // ClaimResume moves a resume to claimed, consuming one attempt. It returns
 // false when the attempt budget is spent or the row is mid-run. Finished and
 // interrupted runs may be claimed again, always after a fresh decision.
-func (d *DB) ClaimResume(ctx context.Context, id string, maxAttempts int, prompt string) (bool, error) {
+func (d *DB) ClaimResume(ctx context.Context, id string, maxAttempts int, prompt, decisionID string) (bool, error) {
+	now := time.Now().UTC()
 	result, err := d.db.ExecContext(ctx, `UPDATE resumes
- SET state=?,attempts=attempts+1,prompt=?,updated_at=?
+ SET state=?,attempts=attempts+1,prompt=?,decision_id=?,started_at=?,updated_at=?
  WHERE id=? AND state IN (?,?,?,?) AND attempts < ?`,
-		ResumeClaimed, prompt, unix(time.Now()), id,
+		ResumeRunning, prompt, decisionID, unix(now), unix(now), id,
 		ResumePending, ResumeInterrupted, ResumeFinished, ResumeFailed, maxAttempts)
 	if err != nil {
 		return false, fmt.Errorf("claim resume: %w", err)
 	}
 	count, err := result.RowsAffected()
 	return count == 1, err
-}
-
-// StartResume marks a claimed resume as running.
-func (d *DB) StartResume(ctx context.Context, id string, decisionID string) error {
-	_, err := d.db.ExecContext(ctx, `UPDATE resumes
- SET state=?,started_at=?,decision_id=?,updated_at=? WHERE id=? AND state=?`,
-		ResumeRunning, unix(time.Now()), decisionID, unix(time.Now()), id, ResumeClaimed)
-	if err != nil {
-		return fmt.Errorf("start resume: %w", err)
-	}
-	return nil
 }
 
 // FinishResume stores the outcome of a completed run.
@@ -150,8 +139,8 @@ func (d *DB) FinishResume(ctx context.Context, id string, exitCode int, lastMess
 // FailResume records a resume that could not run.
 func (d *DB) FailResume(ctx context.Context, id string, reason string) error {
 	_, err := d.db.ExecContext(ctx, `UPDATE resumes
- SET state=?,finished_at=?,last_message=?,updated_at=? WHERE id=? AND state IN (?,?)`,
-		ResumeFailed, unix(time.Now()), reason, unix(time.Now()), id, ResumeClaimed, ResumeRunning)
+ SET state=?,finished_at=?,last_message=?,updated_at=? WHERE id=? AND state=?`,
+		ResumeFailed, unix(time.Now()), reason, unix(time.Now()), id, ResumeRunning)
 	if err != nil {
 		return fmt.Errorf("fail resume: %w", err)
 	}
