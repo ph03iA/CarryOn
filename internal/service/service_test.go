@@ -19,6 +19,8 @@ func TestScriptRegistersAResilientLogonTask(t *testing.T) {
 		"-MultipleInstances IgnoreNew",
 		"-ExecutionTimeLimit ([TimeSpan]::Zero)",
 		"-StartWhenAvailable",
+		"-LogonType S4U",
+		"-Principal $principal",
 	}
 	for _, want := range required {
 		if !strings.Contains(script, want) {
@@ -45,7 +47,14 @@ func TestUninstallTargetsTheSameTask(t *testing.T) {
 }
 
 func TestInstallRejectsEmptyPaths(t *testing.T) {
-	if err := Install(nil, "", ""); err == nil {
+	if _, err := Install(nil, "", ""); err == nil {
 		t.Fatal("want an error without paths")
+	}
+}
+
+func TestInteractiveScriptHasNoS4U(t *testing.T) {
+	script := InteractiveScript(`C:\Tools\carryon.exe`, `C:\work`, `DOMAIN\dev`)
+	if strings.Contains(script, "S4U") {
+		t.Fatalf("interactive fallback must not claim S4U:\n%s", script)
 	}
 }

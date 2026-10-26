@@ -175,6 +175,7 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - A crash after a resume starts consumes one attempt; further resumes need a fresh decision.
 - Resend idempotency keys expire after 24 hours. The outbox retries within that window.
 - Windows only. There are no systemd or launchd service files.
+- The logon task prefers `-LogonType S4U`, so it runs without a console window. If Windows needs admin rights or a "Log on as a batch job" policy, CarryOn falls back to an interactive logon task, which may briefly show a console window.
 - Smart App Control can block locally built unsigned executables. See Troubleshooting.
 
 ## Verified

@@ -12,8 +12,21 @@ import (
 // TaskName is the scheduled task CarryOn manages.
 const TaskName = "CarryOn"
 
-// Script builds the PowerShell that registers the logon task.
+// Script builds the PowerShell that registers the preference task. S4U runs
+// without an interactive session, so no console window appears.
 func Script(exePath, workDir, user string) string {
+	return fmt.Sprintf(`$ErrorActionPreference = 'Stop'
+$action = New-ScheduledTaskAction -Execute '%s' -Argument 'watch' -WorkingDirectory '%s'
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User '%s'
+$principal = New-ScheduledTaskPrincipal -UserId '%s' -LogonType S4U -RunLevel Limited
+$settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
+Register-ScheduledTask -TaskName '%s' -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Description 'CarryOn keeps Claude Code and Codex work going through usage limits.' -Force | Out-Null`,
+		escape(exePath), escape(workDir), escape(user), escape(user), TaskName)
+}
+
+// InteractiveScript is the fallback when S4U is unavailable. It may show a
+// console window at logon.
+func InteractiveScript(exePath, workDir, user string) string {
 	return fmt.Sprintf(`$ErrorActionPreference = 'Stop'
 $action = New-ScheduledTaskAction -Execute '%s' -Argument 'watch' -WorkingDirectory '%s'
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User '%s'
@@ -28,15 +41,23 @@ func escape(value string) string {
 }
 
 // Install registers the task for the current user.
-func Install(ctx context.Context, exePath, workDir string) error {
+// Install registers the task, preferring S4U so no console window opens. It
+// returns a note describing which mode was used.
+func Install(ctx context.Context, exePath, workDir string) (string, error) {
 	if exePath == "" || workDir == "" {
-		return errors.New("install needs an executable and a working directory")
+		return "", errors.New("install needs an executable and a working directory")
 	}
 	user, err := currentUser(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
-	return powershell(ctx, Script(exePath, workDir, user))
+	if err := powershell(ctx, Script(exePath, workDir, user)); err == nil {
+		return "Installed the CarryOn task with S4U; it runs without a console window.", nil
+	}
+	if err := powershell(ctx, InteractiveScript(exePath, workDir, user)); err != nil {
+		return "", err
+	}
+	return "Installed the interactive logon task. S4U needs admin rights or a log-on-as-batch-job policy, so Windows may show a console window.", nil
 }
 
 // Uninstall removes the task, ignoring an already-absent task.

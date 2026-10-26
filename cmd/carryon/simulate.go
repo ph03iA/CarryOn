@@ -26,10 +26,12 @@ func runService(ctx context.Context, paths config.Paths, args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := service.Install(ctx, absolute, paths.Dir); err != nil {
+		note, err := service.Install(ctx, absolute, paths.Dir)
+		if err != nil {
 			return err
 		}
-		fmt.Println("Installed the CarryOn logon task. It starts at every sign-in and restarts on failure.")
+		fmt.Println(note)
+		fmt.Println("It starts at every sign-in and restarts on failure.")
 		fmt.Printf("Logs: %s\n", paths.Log)
 		return nil
 	case "uninstall":
