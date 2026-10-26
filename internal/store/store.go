@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 3
+const schemaVersion = 4
 
 // DB is the SQLite-backed state store.
 type DB struct {
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS resumes (
   files_changed TEXT NOT NULL DEFAULT '',
   simulated     INTEGER NOT NULL DEFAULT 0,
   updated_at    INTEGER NOT NULL,
-  UNIQUE(provider, session_id)
+  UNIQUE(provider, session_id, incident_id)
 );
 CREATE INDEX IF NOT EXISTS resumes_state ON resumes(state, updated_at);
 
@@ -182,6 +182,9 @@ func migrate(db *sql.DB) error {
 		// v3 records the window length so the cut-off search can be bounded.
 		_, _ = db.ExecContext(ctx, "ALTER TABLE incidents ADD COLUMN window_duration INTEGER NOT NULL DEFAULT 0")
 	}
+	if version > 0 && version < 4 {
+		rebuildResumes(ctx, db)
+	}
 	if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return fmt.Errorf("write schema version: %w", err)
 	}
@@ -212,3 +215,41 @@ func boolInt(value bool) int {
 
 // isNoRows reports whether a query matched no rows.
 func isNoRows(err error) bool { return errors.Is(err, sql.ErrNoRows) }
+
+const resumeSchema = `
+CREATE TABLE IF NOT EXISTS resumes (
+  id            TEXT PRIMARY KEY,
+  incident_id   TEXT NOT NULL,
+  provider      TEXT NOT NULL,
+  session_id    TEXT NOT NULL,
+  cwd           TEXT NOT NULL,
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  state         TEXT NOT NULL,
+  prompt        TEXT NOT NULL DEFAULT '',
+  decision_id   TEXT NOT NULL DEFAULT '',
+  exit_code     INTEGER NOT NULL DEFAULT 0,
+  started_at    INTEGER NOT NULL DEFAULT 0,
+  finished_at   INTEGER NOT NULL DEFAULT 0,
+  last_message  TEXT NOT NULL DEFAULT '',
+  files_changed TEXT NOT NULL DEFAULT '',
+  simulated     INTEGER NOT NULL DEFAULT 0,
+  updated_at    INTEGER NOT NULL,
+  UNIQUE(provider, session_id, incident_id)
+);
+CREATE INDEX IF NOT EXISTS resumes_state ON resumes(state, updated_at);`
+
+// rebuildResumes moves pre-v4 rows onto the per-incident uniqueness rule.
+func rebuildResumes(ctx context.Context, db *sql.DB) {
+	if _, err := db.ExecContext(ctx, "ALTER TABLE resumes RENAME TO resumes_old"); err != nil {
+		return
+	}
+	if _, err := db.ExecContext(ctx, resumeSchema); err != nil {
+		return
+	}
+	_, _ = db.ExecContext(ctx, `INSERT INTO resumes
+ (id,incident_id,provider,session_id,cwd,attempts,state,prompt,decision_id,exit_code,
+  started_at,finished_at,last_message,files_changed,simulated,updated_at)
+ SELECT id,incident_id,provider,session_id,cwd,attempts,state,prompt,decision_id,exit_code,
+  started_at,finished_at,last_message,files_changed,simulated,updated_at FROM resumes_old`)
+	_, _ = db.ExecContext(ctx, "DROP TABLE resumes_old")
+}

@@ -39,9 +39,9 @@ type Resume struct {
 	UpdatedAt    time.Time
 }
 
-// ResumeID is stable for one provider and session.
-func ResumeID(provider, sessionID string) string {
-	payload, _ := json.Marshal([]any{provider, sessionID})
+// ResumeID is stable for one provider, session and incident.
+func ResumeID(provider, sessionID, incidentID string) string {
+	payload, _ := json.Marshal([]any{provider, sessionID, incidentID})
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
 }
@@ -51,7 +51,7 @@ func ResumeID(provider, sessionID string) string {
 func (d *DB) CreateResume(ctx context.Context, resume *Resume) (bool, error) {
 	now := time.Now().UTC()
 	if resume.ID == "" {
-		resume.ID = ResumeID(resume.Provider, resume.SessionID)
+		resume.ID = ResumeID(resume.Provider, resume.SessionID, resume.IncidentID)
 	}
 	if resume.State == "" {
 		resume.State = ResumePending
@@ -60,7 +60,7 @@ func (d *DB) CreateResume(ctx context.Context, resume *Resume) (bool, error) {
  (id,incident_id,provider,session_id,cwd,attempts,state,prompt,decision_id,exit_code,
   started_at,finished_at,last_message,files_changed,simulated,updated_at)
  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
- ON CONFLICT(provider,session_id) DO NOTHING`,
+ ON CONFLICT(provider,session_id,incident_id) DO NOTHING`,
 		resume.ID, resume.IncidentID, resume.Provider, resume.SessionID, resume.Cwd,
 		resume.Attempts, resume.State, resume.Prompt, resume.DecisionID, resume.ExitCode,
 		unix(resume.StartedAt), unix(resume.FinishedAt), resume.LastMessage,
@@ -99,10 +99,11 @@ func (d *DB) Resume(ctx context.Context, id string) (Resume, error) {
 	return scanResume(row)
 }
 
-// ResumeForSession loads the resume row for a provider session, if any.
-func (d *DB) ResumeForSession(ctx context.Context, provider, sessionID string) (Resume, error) {
+// ResumeForIncident loads the resume row for one session and incident.
+func (d *DB) ResumeForIncident(ctx context.Context, provider, sessionID, incidentID string) (Resume, error) {
 	row := d.db.QueryRowContext(ctx, "SELECT "+resumeColumns+
-		" FROM resumes WHERE provider=? AND session_id=?", provider, sessionID)
+		" FROM resumes WHERE provider=? AND session_id=? AND incident_id=?",
+		provider, sessionID, incidentID)
 	return scanResume(row)
 }
 

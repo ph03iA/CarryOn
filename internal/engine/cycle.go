@@ -187,7 +187,7 @@ func (e *Engine) resumeLoop(ctx context.Context, incident store.Incident, found 
 
 // runOneAttempt claims and runs a single resume, reporting whether to stop.
 func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, found session.Session, prompt, reason string) (bool, error) {
-	record, err := e.DB.ResumeForSession(ctx, incident.Provider, found.ID)
+	record, err := e.DB.ResumeForIncident(ctx, incident.Provider, found.ID, incident.ID)
 	if err != nil {
 		return true, err
 	}
@@ -245,7 +245,7 @@ func (e *Engine) postDecision(ctx context.Context, incident store.Incident, foun
 	if err != nil {
 		return decision.Result{}, err
 	}
-	record, _ := e.DB.ResumeForSession(ctx, incident.Provider, found.ID)
+	record, _ := e.DB.ResumeForIncident(ctx, incident.Provider, found.ID, incident.ID)
 	if err := e.recordDecision(ctx, incident, record.ID, "post", result); err != nil {
 		return decision.Result{}, err
 	}
@@ -302,7 +302,7 @@ func (e *Engine) blockOnDecision(ctx context.Context, incident store.Incident, f
 }
 
 func (e *Engine) recordDecision(ctx context.Context, incident store.Incident, resumeID, stage string, result decision.Result) error {
-	record, _ := e.DB.ResumeForSession(ctx, incident.Provider, incident.SessionID)
+	record, _ := e.DB.ResumeForIncident(ctx, incident.Provider, incident.SessionID, incident.ID)
 	attempt := record.Attempts
 	if resumeID == "" {
 		resumeID = record.ID

@@ -271,7 +271,7 @@ func TestCrashNeedsANewDecisionBeforeResuming(t *testing.T) {
 
 	incidents, _ := h.db.Incidents(context.Background())
 	incident := incidents[0]
-	resumeRow, err := h.db.ResumeForSession(context.Background(), "claude", fixtureSessionID)
+	resumeRow, err := h.db.ResumeForIncident(context.Background(), "claude", fixtureSessionID, incident.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,5 +534,46 @@ func TestWatcherSkipsSimulatedIncidents(t *testing.T) {
 	h.step(t)
 	if h.runner.calls != 0 {
 		t.Fatalf("the watcher must not resume simulated incidents, got %d runs", h.runner.calls)
+	}
+}
+
+func TestNewIncidentCanResumeTheSameSessionAgain(t *testing.T) {
+	h := newHarness(t)
+	h.decider.results = []decision.Result{
+		{Action: decision.ActionResume, Reason: "work remains", Prompt: "first pass"},
+		{Action: decision.ActionResumeAgain, Reason: "one more step", Prompt: "second pass"},
+		{Action: decision.ActionDone, Reason: "first task done"},
+		{Action: decision.ActionResume, Reason: "new incident", Prompt: "third pass"},
+		{Action: decision.ActionDone, Reason: "second task done"},
+	}
+
+	h.step(t)
+	firstReset := h.now.Add(3 * time.Minute)
+	h.engine.Now = func() time.Time { return firstReset }
+	h.provider.snapshot.ObservedAt = firstReset
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
+	h.step(t)
+	if h.runner.calls != 2 {
+		t.Fatalf("first incident should use both attempts, got %d", h.runner.calls)
+	}
+
+	// A new limit window cuts the same session off again.
+	secondSweep := h.now.Add(time.Hour)
+	h.engine.Now = func() time.Time { return secondSweep }
+	h.provider.snapshot.ObservedAt = secondSweep
+	h.provider.snapshot.Windows[0].UsedPercent = 100
+	h.provider.snapshot.Windows[0].ResetsAt = secondSweep.Add(2 * time.Minute)
+	h.step(t)
+
+	secondReset := secondSweep.Add(3 * time.Minute)
+	h.engine.Now = func() time.Time { return secondReset }
+	h.provider.snapshot.ObservedAt = secondReset
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = secondReset.Add(5 * time.Hour)
+	h.step(t)
+
+	if h.runner.calls != 3 {
+		t.Fatalf("a new incident must get its own resume budget, got %d calls", h.runner.calls)
 	}
 }

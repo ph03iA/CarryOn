@@ -184,3 +184,21 @@ func TestReconcileInterruptedMarksRunningRuns(t *testing.T) {
 		t.Fatalf("want interrupted/1, got %s/%d", stored.State, stored.Attempts)
 	}
 }
+
+func TestResumeIsUniquePerIncident(t *testing.T) {
+	db := testDB(t)
+	ctx := context.Background()
+	first := Resume{IncidentID: "i1", Provider: "claude", SessionID: "same", Cwd: `C:\a`}
+	second := Resume{IncidentID: "i2", Provider: "claude", SessionID: "same", Cwd: `C:\a`}
+
+	if created, err := db.CreateResume(ctx, &first); err != nil || !created {
+		t.Fatalf("first: created=%v err=%v", created, err)
+	}
+	if created, err := db.CreateResume(ctx, &second); err != nil || !created {
+		t.Fatalf("a new incident must be able to resume the same session: created=%v err=%v", created, err)
+	}
+	duplicate := Resume{IncidentID: "i1", Provider: "claude", SessionID: "same", Cwd: `C:\a`}
+	if created, err := db.CreateResume(ctx, &duplicate); err != nil || created {
+		t.Fatalf("duplicate incident resume must be ignored: created=%v err=%v", created, err)
+	}
+}
