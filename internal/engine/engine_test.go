@@ -608,3 +608,25 @@ func TestNewIncidentCanResumeTheSameSessionAgain(t *testing.T) {
 		t.Fatalf("a new incident must get its own resume budget, got %d calls", h.runner.calls)
 	}
 }
+
+type blockingDecider struct{}
+
+func (blockingDecider) Decide(ctx context.Context, _ decision.Request) (decision.Result, error) {
+	<-ctx.Done()
+	return decision.Result{}, ctx.Err()
+}
+
+func TestDecideIsBounded(t *testing.T) {
+	previous := decideTimeout
+	decideTimeout = 100 * time.Millisecond
+	defer func() { decideTimeout = previous }()
+
+	built := &Engine{Decider: blockingDecider{}}
+	started := time.Now()
+	if _, err := built.decide(context.Background(), decision.Request{}); err == nil {
+		t.Fatal("want a deadline error")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("decide ignored its timeout for %s", elapsed)
+	}
+}

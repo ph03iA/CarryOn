@@ -149,7 +149,7 @@ func (e *Engine) decideAndResume(ctx context.Context, incident store.Incident, f
 		return e.resumeAfterCrash(ctx, incident, found, record)
 	}
 	transcript := e.Scanner.Transcript(found, e.Config.TailChars)
-	result, err := e.Decider.Decide(ctx, decision.Request{
+	result, err := e.decide(ctx, decision.Request{
 		Stage: "pre", Provider: incident.Provider, Cwd: found.Cwd,
 		SessionID: found.ID, LimitLabel: incident.WindowLabel, ResetAt: incident.ResetAt,
 		Transcript: transcript, TailChars: e.Config.TailChars, PromptMax: e.Config.PromptChars,
@@ -241,7 +241,7 @@ func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, fou
 func (e *Engine) postDecision(ctx context.Context, incident store.Incident, found session.Session) (decision.Result, error) {
 	outcome := e.lastOutcome
 	summary := buildRunSummary(outcome)
-	result, err := e.Decider.Decide(ctx, decision.Request{
+	result, err := e.decide(ctx, decision.Request{
 		Stage: "post", Provider: incident.Provider, Cwd: found.Cwd,
 		SessionID: found.ID, LimitLabel: incident.WindowLabel, ResetAt: incident.ResetAt,
 		Transcript: e.Scanner.Transcript(found, e.Config.TailChars),

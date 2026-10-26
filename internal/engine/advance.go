@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/ph03iA/CarryOn/internal/decision"
 	"github.com/ph03iA/CarryOn/internal/session"
 	"github.com/ph03iA/CarryOn/internal/store"
 )
@@ -73,4 +74,14 @@ func (e *Engine) finishRun() {
 	e.mu.Lock()
 	e.running = false
 	e.mu.Unlock()
+}
+
+// decideTimeout bounds one Gemini call. Tests shorten it.
+var decideTimeout = 2 * time.Minute
+
+// decide wraps every Gemini call in its own deadline.
+func (e *Engine) decide(ctx context.Context, request decision.Request) (decision.Result, error) {
+	decideCtx, cancel := context.WithTimeout(ctx, decideTimeout)
+	defer cancel()
+	return e.Decider.Decide(decideCtx, request)
 }
