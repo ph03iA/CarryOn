@@ -821,3 +821,22 @@ func TestRunOnceWaitsForResume(t *testing.T) {
 		t.Fatal("RunOnce did not return after the resume finished")
 	}
 }
+
+func TestDeliverOutboxReleasesStaleLease(t *testing.T) {
+	h := newHarness(t)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	if err := h.engine.enqueue(context.Background(), "stale:1", mail.Event{
+		Kind: mail.KindBack, Provider: "claude", Summary: "nothing to resume",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.db.ClaimEmail(context.Background(), h.now, 100*time.Millisecond); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+
+	h.engine.Now = func() time.Time { return h.now.Add(time.Minute) }
+	h.step(t)
+	if len(h.sender.sent) != 1 {
+		t.Fatalf("stale lease was not released and delivered: %v", h.subjects())
+	}
+}

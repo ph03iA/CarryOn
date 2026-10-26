@@ -211,6 +211,10 @@ func (e *Engine) deliverOutbox(ctx context.Context) error {
 	if e.Sender == nil {
 		return nil
 	}
+	// Recover emails whose delivery lease expired after a crash or a slow send.
+	if _, err := e.DB.ReleaseStaleLeases(ctx, e.now()); err != nil {
+		return err
+	}
 	for range 20 {
 		email, err := e.DB.ClaimEmail(ctx, e.now(), 2*time.Minute)
 		if errors.Is(err, store.ErrNoEmail) {
@@ -262,9 +266,6 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 		e.logf("%d interrupted resume(s) marked; they need a new decision", interrupted)
 	}
 	if _, err := e.DB.ResetInFlightIncidents(ctx); err != nil {
-		return err
-	}
-	if _, err := e.DB.ReleaseStaleLeases(ctx, e.now()); err != nil {
 		return err
 	}
 	return nil
