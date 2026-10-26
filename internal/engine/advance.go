@@ -1,4 +1,4 @@
-﻿package engine
+package engine
 
 import (
 	"context"
@@ -22,6 +22,9 @@ func (e *Engine) advance(ctx context.Context) []error {
 	}
 	var problems []error
 	for _, incident := range incidents {
+		if incident.Simulated {
+			continue
+		}
 		if incident.ResetAt.After(e.now()) {
 			continue
 		}

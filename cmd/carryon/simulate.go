@@ -9,6 +9,7 @@ import (
 	"github.com/ph03iA/CarryOn/internal/config"
 	"github.com/ph03iA/CarryOn/internal/logx"
 	"github.com/ph03iA/CarryOn/internal/service"
+	"github.com/ph03iA/CarryOn/internal/single"
 )
 
 func runService(ctx context.Context, paths config.Paths, args []string) error {
@@ -50,6 +51,11 @@ func runService(ctx context.Context, paths config.Paths, args []string) error {
 }
 
 func runSimulate(ctx context.Context, paths config.Paths, args []string) error {
+	lock, err := single.Acquire(single.Name)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
 	sessionID, ok := parseFlag(args, "--session")
 	if !ok || sessionID == "" {
 		return errMissingSession

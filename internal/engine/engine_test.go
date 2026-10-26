@@ -518,3 +518,21 @@ func TestUnconfirmedResetExpiresAfter24Hours(t *testing.T) {
 		t.Fatalf("expected a 24-hour reason:\n%s", last.Body)
 	}
 }
+
+func TestWatcherSkipsSimulatedIncidents(t *testing.T) {
+	h := newHarness(t)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	incident := store.Incident{
+		Provider: "claude", AccountID: "acct", WindowID: "simulated",
+		WindowLabel: "simulated", UsedPercent: 100, ResetAt: h.now.Add(-time.Minute),
+		Simulated: true, State: store.IncidentAwaitingReset,
+		SessionID: fixtureSessionID, SessionCwd: `C:\work\demo`,
+	}
+	if _, err := h.db.CreateIncident(context.Background(), &incident); err != nil {
+		t.Fatal(err)
+	}
+	h.step(t)
+	if h.runner.calls != 0 {
+		t.Fatalf("the watcher must not resume simulated incidents, got %d runs", h.runner.calls)
+	}
+}

@@ -15,6 +15,7 @@ import (
 	"github.com/ph03iA/CarryOn/internal/quota"
 	"github.com/ph03iA/CarryOn/internal/resume"
 	"github.com/ph03iA/CarryOn/internal/session"
+	"github.com/ph03iA/CarryOn/internal/single"
 	"github.com/ph03iA/CarryOn/internal/store"
 )
 
@@ -82,6 +83,11 @@ func writeEnvTemplate(path string) error {
 }
 
 func runWatch(ctx context.Context, paths config.Paths, args []string) error {
+	lock, err := single.Acquire(single.Name)
+	if err != nil {
+		return err
+	}
+	defer lock.Release()
 	file, err := logFile(paths.Log)
 	if err != nil {
 		return err
