@@ -764,3 +764,26 @@ func TestEnqueueUsesEngineClock(t *testing.T) {
 		t.Fatalf("email stamped with the real clock is not due: %v", err)
 	}
 }
+
+func TestResumeStartFailureSendsFinishEmail(t *testing.T) {
+	h := newHarness(t)
+	h.runner.err = errors.New("spawn failed")
+	h.step(t)
+
+	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
+	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
+	h.step(t)
+
+	if len(h.sender.sent) != 2 {
+		t.Fatalf("want a back email and a finish email, got %v", h.subjects())
+	}
+	last := h.sender.sent[len(h.sender.sent)-1]
+	if !strings.Contains(last.Subject, "finished") {
+		t.Fatalf("expected a finish email, got %q", last.Subject)
+	}
+	if !strings.Contains(last.Body, "could not start") || !strings.Contains(last.Body, "spawn failed") {
+		t.Fatalf("finish email missing the start failure:\n%s", last.Body)
+	}
+}

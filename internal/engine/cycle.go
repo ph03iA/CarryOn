@@ -222,6 +222,8 @@ func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, fou
 		if err := e.DB.FailResume(ctx, record.ID, runErr.Error()); err != nil {
 			return true, err
 		}
+		e.lastOutcome = resume.Outcome{ExitCode: -1, LastMessage: runErr.Error()}
+		e.enqueueFinish(ctx, incident, "could not start", runErr.Error())
 		return true, e.closeIncident(ctx, incident, store.IncidentBlocked, "the resume could not start: "+runErr.Error())
 	}
 	if err := e.DB.FinishResume(ctx, record.ID, outcome.ExitCode, outcome.LastMessage, strings.Join(outcome.Files, ", ")); err != nil {
