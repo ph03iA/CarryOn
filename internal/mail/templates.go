@@ -69,13 +69,16 @@ func subjectFor(event Event) string {
 }
 
 func bodyFor(event Event, now time.Time) []string {
-	lines := []string{fmt.Sprintf("%s (%s)", providerName(event.Provider), event.SessionID)}
+	lines := []string{fmt.Sprintf("%s (%s)", providerName(event.Provider), displaySession(event.SessionID))}
 	switch event.Kind {
 	case KindLimitHit:
 		lines = append(lines,
 			fmt.Sprintf("Limit: %s", event.WindowLabel),
 			fmt.Sprintf("Resets: %s (%s)", localTime(event.ResetAt), utcTime(event.ResetAt)),
 		)
+		if event.Reason != "" {
+			lines = append(lines, event.Reason)
+		}
 	case KindDecisionSkip, KindDecisionBlock:
 		lines = append(lines, fmt.Sprintf("Decision: %s", event.Action), "Reason: "+event.Reason)
 	case KindResumeStart:
@@ -134,4 +137,12 @@ func utcTime(value time.Time) string {
 		return "unknown"
 	}
 	return value.UTC().Format("2006-01-02 15:04 UTC")
+}
+
+// displaySession names a session in email, or says none was found.
+func displaySession(sessionID string) string {
+	if sessionID == "" {
+		return "no cut-off session found"
+	}
+	return sessionID
 }

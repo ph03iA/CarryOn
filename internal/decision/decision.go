@@ -48,6 +48,8 @@ type Result struct {
 	Model      string
 	InputChars int
 	Redactions int
+	// Fallback marks a decision recorded because the decider failed.
+	Fallback bool
 }
 
 // Decider returns one decision per call.
@@ -128,4 +130,16 @@ func ResumePrompt(step string) string {
 		return FixedInstruction
 	}
 	return FixedInstruction + " " + cleaned
+}
+
+// Unavailable is a decider that could not be configured. It always fails, so
+// CarryOn blocks instead of resuming without a decision.
+type Unavailable struct{ Err error }
+
+// Decide reports the configuration problem.
+func (u Unavailable) Decide(context.Context, Request) (Result, error) {
+	if u.Err == nil {
+		return Result{}, errors.New("gemini is not configured")
+	}
+	return Result{}, u.Err
 }

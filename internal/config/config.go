@@ -183,6 +183,8 @@ type Secrets struct {
 // file in the state directory, then from the working directory.
 func LoadSecrets(stateDir string) (Secrets, error) {
 	var secrets Secrets
+	fillSecret(&secrets.Resend, os.Getenv(envResendKey))
+	fillSecret(&secrets.Gemini, os.Getenv(envGeminiKey))
 	for _, path := range envCandidates(stateDir) {
 		values, err := ReadEnvFile(path)
 		if err != nil {
@@ -191,8 +193,6 @@ func LoadSecrets(stateDir string) (Secrets, error) {
 		fillSecret(&secrets.Resend, values[envResendKey])
 		fillSecret(&secrets.Gemini, values[envGeminiKey])
 	}
-	fillSecret(&secrets.Resend, os.Getenv(envResendKey))
-	fillSecret(&secrets.Gemini, os.Getenv(envGeminiKey))
 	return secrets, nil
 }
 

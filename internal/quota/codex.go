@@ -213,4 +213,3 @@ func codexWindowValue(id string, data *codexWindow) (Window, bool) {
 		Duration:    duration,
 	}, true
 }
-

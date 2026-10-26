@@ -153,9 +153,9 @@ type claudeUsage struct {
 	SubscriptionType    string `json:"subscription_type"`
 	RateLimitsAvailable bool   `json:"rate_limits_available"`
 	RateLimits          *struct {
-		FiveHour  *claudeUsageWindow `json:"five_hour"`
-		SevenDay  *claudeUsageWindow `json:"seven_day"`
-		Limits    []claudeLimit      `json:"limits"`
+		FiveHour *claudeUsageWindow `json:"five_hour"`
+		SevenDay *claudeUsageWindow `json:"seven_day"`
+		Limits   []claudeLimit      `json:"limits"`
 	} `json:"rate_limits"`
 }
 

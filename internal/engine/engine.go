@@ -1,0 +1,371 @@
+// Package engine runs the poll loop and the incident state machine.
+package engine
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"sync"
+	"time"
+
+	"github.com/ph03iA/CarryOn/internal/config"
+	"github.com/ph03iA/CarryOn/internal/decision"
+	"github.com/ph03iA/CarryOn/internal/logx"
+	"github.com/ph03iA/CarryOn/internal/mail"
+	"github.com/ph03iA/CarryOn/internal/quota"
+	"github.com/ph03iA/CarryOn/internal/resume"
+	"github.com/ph03iA/CarryOn/internal/session"
+	"github.com/ph03iA/CarryOn/internal/store"
+)
+
+// Runner continues a session. resume.Runner is the production implementation.
+type Runner interface {
+	Run(ctx context.Context, spec resume.Spec) (resume.Outcome, error)
+}
+
+// Engine ties the providers, the store, decisions, resumes and email together.
+type Engine struct {
+	DB        *store.DB
+	Config    config.Config
+	Providers []quota.Provider
+	Scanner   session.Scanner
+	Decider   decision.Decider
+	Runner    Runner
+	Sender    mail.Sender
+	Log       *logx.Logger
+	Now       func() time.Time
+
+	// Synchronous runs resumes inline, which tests rely on.
+	Synchronous bool
+
+	mu      sync.Mutex
+	running bool
+
+	lastOutcome resume.Outcome
+	lastPrompt  string
+}
+
+func (e *Engine) now() time.Time {
+	if e.Now != nil {
+		return e.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func (e *Engine) logf(format string, args ...any) {
+	if e.Log != nil {
+		e.Log.Infof(format, args...)
+	}
+}
+
+func (e *Engine) logErr(format string, args ...any) {
+	if e.Log != nil {
+		e.Log.Errorf(format, args...)
+	}
+}
+
+// Step performs one poll, resumes at most one session, and flushes the outbox.
+func (e *Engine) Step(ctx context.Context) error {
+	var problems []error
+	problems = append(problems, e.poll(ctx)...)
+	problems = append(problems, e.advance(ctx)...)
+	problems = append(problems, e.deliverOutbox(ctx))
+	return errors.Join(problems...)
+}
+
+// Run loops until the context is cancelled.
+func (e *Engine) Run(ctx context.Context, interval time.Duration) error {
+	if interval <= 0 {
+		interval = time.Duration(e.Config.PollSeconds) * time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	if err := e.Step(ctx); err != nil {
+		e.logErr("initial cycle: %v", err)
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := e.Step(ctx); err != nil {
+				e.logErr("cycle: %v", err)
+			}
+		}
+	}
+}
+
+// poll reads every provider and records exhausted windows.
+func (e *Engine) poll(ctx context.Context) []error {
+	var problems []error
+	for _, provider := range e.Providers {
+		snapshot, err := provider.Read(ctx)
+		if err != nil {
+			e.logErr("%s usage read failed: %v", provider.Name(), err)
+			problems = append(problems, err)
+			continue
+		}
+		if err := e.saveSnapshot(ctx, snapshot); err != nil {
+			problems = append(problems, err)
+			continue
+		}
+		problems = append(problems, e.recordExhausted(ctx, snapshot)...)
+	}
+	return problems
+}
+
+func (e *Engine) saveSnapshot(ctx context.Context, snapshot quota.Snapshot) error {
+	data, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	return e.DB.SaveSnapshot(ctx, store.Snapshot{
+		Provider: snapshot.Provider, Data: string(data), ObservedAt: snapshot.ObservedAt,
+	})
+}
+
+// recordExhausted creates one incident per exhausted window.
+func (e *Engine) recordExhausted(ctx context.Context, snapshot quota.Snapshot) []error {
+	var problems []error
+	for _, window := range snapshot.Windows {
+		if window.UsedPercent < 100 {
+			continue
+		}
+		incident := store.Incident{
+			Provider: snapshot.Provider, AccountID: snapshot.AccountID,
+			WindowID: window.ID, WindowLabel: window.Label,
+			UsedPercent: window.UsedPercent, ResetAt: window.ResetsAt,
+		}
+		created, err := e.DB.CreateIncident(ctx, &incident)
+		if err != nil {
+			problems = append(problems, err)
+			continue
+		}
+		if !created {
+			continue
+		}
+		e.logf("%s %s limit exhausted; resets %s", snapshot.Provider, window.Label, window.ResetsAt)
+		problems = append(problems, e.announceIncident(ctx, incident))
+	}
+	return problems
+}
+
+// announceIncident finds the cut-off session and emails the limit hit.
+func (e *Engine) announceIncident(ctx context.Context, incident store.Incident) error {
+	update := store.IncidentUpdate{State: store.IncidentAwaitingReset}
+	found, ok, err := e.Scanner.FindCutOff(incident.Provider)
+	if err != nil {
+		e.logErr("scan %s sessions: %v", incident.Provider, err)
+	}
+	if ok {
+		update.SessionID = found.ID
+		update.SessionPath = found.Path
+		update.SessionCwd = found.Cwd
+		update.CutOffAt = found.CutOffAt
+		update.CutOffOffset = found.ResumeFrom
+		update.Reason = "cut-off session found"
+		if _, err := e.DB.CreateResume(ctx, &store.Resume{
+			IncidentID: incident.ID, Provider: incident.Provider,
+			SessionID: found.ID, Cwd: found.Cwd, Simulated: incident.Simulated,
+		}); err != nil {
+			return err
+		}
+	} else {
+		update.Reason = "no cut-off session found"
+	}
+	if err := e.DB.UpdateIncident(ctx, incident.ID, update); err != nil {
+		return err
+	}
+	event := mail.Event{
+		Kind: mail.KindLimitHit, Provider: incident.Provider,
+		WindowLabel: incident.WindowLabel, ResetAt: incident.ResetAt,
+		SessionID: update.SessionID, SessionCwd: update.SessionCwd,
+		Simulated: incident.Simulated, Now: e.now(),
+	}
+	if !ok {
+		event.Reason = "CarryOn found no session that ended on a usage-limit error, so it will not resume anything."
+	}
+	return e.enqueue(ctx, "limit:"+incident.ID, event)
+}
+
+// advance starts the next due resume, in the background unless synchronous.
+func (e *Engine) advance(ctx context.Context) []error {
+	e.mu.Lock()
+	busy := e.running
+	e.mu.Unlock()
+	if busy {
+		return nil
+	}
+	incident, ok, err := e.nextDueIncident(ctx)
+	if err != nil {
+		return []error{err}
+	}
+	if !ok {
+		return nil
+	}
+	e.mu.Lock()
+	if e.running {
+		e.mu.Unlock()
+		return nil
+	}
+	e.running = true
+	e.mu.Unlock()
+
+	if e.Synchronous {
+		defer e.finishRun()
+		if err := e.runCycle(ctx, incident); err != nil {
+			return []error{err}
+		}
+		return nil
+	}
+	go func() {
+		defer e.finishRun()
+		if err := e.runCycle(context.WithoutCancel(ctx), incident); err != nil {
+			e.logErr("resume cycle: %v", err)
+		}
+	}()
+	return nil
+}
+
+func (e *Engine) finishRun() {
+	e.mu.Lock()
+	e.running = false
+	e.mu.Unlock()
+}
+
+// nextDueIncident returns the oldest incident whose reset time has passed.
+func (e *Engine) nextDueIncident(ctx context.Context) (store.Incident, bool, error) {
+	incidents, err := e.DB.Incidents(ctx, store.IncidentAwaitingReset)
+	if err != nil {
+		return store.Incident{}, false, err
+	}
+	for _, incident := range incidents {
+		if incident.ResetAt.After(e.now()) {
+			continue
+		}
+		return incident, true, nil
+	}
+	return store.Incident{}, false, nil
+}
+
+// provider returns the reader for a provider name.
+func (e *Engine) provider(name string) quota.Provider {
+	for _, provider := range e.Providers {
+		if provider.Name() == name {
+			return provider
+		}
+	}
+	return nil
+}
+
+// enqueue renders and stores one email event.
+func (e *Engine) enqueue(ctx context.Context, eventKey string, event mail.Event) error {
+	subject, body := mail.Render(event)
+	created, err := e.DB.EnqueueEmail(ctx, store.Email{
+		EventKey: eventKey, Kind: event.Kind, Subject: subject, Body: body,
+		Simulated: event.Simulated,
+	})
+	if err != nil {
+		return err
+	}
+	if created {
+		e.logf("queued email %s (%s)", event.Kind, eventKey)
+	}
+	return nil
+}
+
+// maxAttempts bounds delivery retries for one email.
+const maxAttempts = 8
+
+// deliverOutbox sends queued emails, retrying transient failures.
+func (e *Engine) deliverOutbox(ctx context.Context) error {
+	if e.Sender == nil {
+		return nil
+	}
+	for range 20 {
+		email, err := e.DB.ClaimEmail(ctx, e.now(), 2*time.Minute)
+		if errors.Is(err, store.ErrNoEmail) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := e.sendEmail(ctx, email); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (e *Engine) sendEmail(ctx context.Context, email store.Email) error {
+	message := mail.Message{
+		EventKey: email.EventKey, To: e.Config.Recipient,
+		From: e.Config.Sender, Subject: email.Subject, Body: email.Body,
+	}
+	sendErr := e.Sender.Send(ctx, message)
+	if sendErr == nil {
+		e.logf("email sent: %s", email.Kind)
+		return e.DB.FinishEmail(ctx, email.ID, store.EmailSent, "", e.now())
+	}
+	state, next := retryDecision(email, sendErr, e.now())
+	e.logErr("email %s: %s (%s)", email.Kind, sendErr, state)
+	return e.DB.FinishEmail(ctx, email.ID, state, sendErr.Error(), next)
+}
+
+func retryDecision(email store.Email, sendErr error, now time.Time) (string, time.Time) {
+	if !mail.Retryable(sendErr) || email.Attempts >= maxAttempts {
+		return store.EmailFailed, now
+	}
+	delay := time.Minute * time.Duration(1<<min(email.Attempts, 6))
+	if requested := mail.RetryAfter(sendErr); requested > delay {
+		delay = requested
+	}
+	return store.EmailRetry, now.Add(delay)
+}
+
+// Reconcile repairs state left behind by a crash.
+func (e *Engine) Reconcile(ctx context.Context) error {
+	interrupted, err := e.DB.ReconcileInterrupted(ctx)
+	if err != nil {
+		return err
+	}
+	if interrupted > 0 {
+		e.logf("%d interrupted resume(s) marked; they need a new decision", interrupted)
+	}
+	if _, err := e.DB.ResetInFlightIncidents(ctx); err != nil {
+		return err
+	}
+	if _, err := e.DB.ReleaseStaleLeases(ctx, e.now()); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Status is a human-readable snapshot of CarryOn's state.
+type Status struct {
+	Incidents []store.Incident
+	Resumes   []store.Resume
+	Emails    []store.Email
+	Decisions []store.Decision
+}
+
+// LoadStatus reads the recent state for the status command.
+func (e *Engine) LoadStatus(ctx context.Context) (Status, error) {
+	incidents, err := e.DB.Incidents(ctx)
+	if err != nil {
+		return Status{}, err
+	}
+	resumes, err := e.DB.Resumes(ctx, 20)
+	if err != nil {
+		return Status{}, err
+	}
+	emails, err := e.DB.Emails(ctx, 20)
+	if err != nil {
+		return Status{}, err
+	}
+	decisions, err := e.DB.Decisions(ctx, 20)
+	if err != nil {
+		return Status{}, err
+	}
+	return Status{Incidents: incidents, Resumes: resumes, Emails: emails, Decisions: decisions}, nil
+}

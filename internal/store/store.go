@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 1
+const schemaVersion = 2
 
 // DB is the SQLite-backed state store.
 type DB struct {
@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS incidents (
   session_path TEXT NOT NULL DEFAULT '',
   session_cwd  TEXT NOT NULL DEFAULT '',
   cut_off_at   INTEGER NOT NULL DEFAULT 0,
+  cut_off_offset INTEGER NOT NULL DEFAULT 0,
   simulated    INTEGER NOT NULL DEFAULT 0,
   reason       TEXT NOT NULL DEFAULT '',
   updated_at   INTEGER NOT NULL,
@@ -171,6 +172,10 @@ func migrate(db *sql.DB) error {
 	}
 	if _, err := db.ExecContext(ctx, schema); err != nil {
 		return fmt.Errorf("initialize schema: %w", err)
+	}
+	if version == 1 {
+		// v2 adds the byte offset used by the already-continued check.
+		_, _ = db.ExecContext(ctx, "ALTER TABLE incidents ADD COLUMN cut_off_offset INTEGER NOT NULL DEFAULT 0")
 	}
 	if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return fmt.Errorf("write schema version: %w", err)

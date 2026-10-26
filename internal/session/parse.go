@@ -14,6 +14,7 @@ type event struct {
 	limitError bool
 	cwd        string
 	text       string
+	role       string
 	at         time.Time
 }
 
@@ -70,6 +71,7 @@ func parseClaudeEvent(data []byte) (event, bool) {
 		limitError: claudeLimitError(record, text),
 		cwd:        record.Cwd,
 		text:       text,
+		role:       record.Type,
 		at:         parseTimestamp(record.Timestamp),
 	}, true
 }
@@ -103,6 +105,7 @@ type codexRecord struct {
 	Payload   struct {
 		Type             string `json:"type"`
 		ID               string `json:"id"`
+		Role             string `json:"role"`
 		Cwd              string `json:"cwd"`
 		Message          string `json:"message"`
 		Reason           string `json:"reason"`
@@ -130,6 +133,7 @@ func parseCodexEvent(data []byte) (event, bool) {
 		limitError: codexLimitError(record),
 		cwd:        record.Payload.Cwd,
 		text:       text,
+		role:       codexRole(record),
 		at:         parseTimestamp(record.Timestamp),
 	}, true
 }
@@ -300,4 +304,46 @@ func assistantText(provider string, data []byte) string {
 		return ""
 	}
 	return strings.Join(claudeTexts(record.Message.Content), "\n")
+}
+
+// codexRole names the speaker for a transcript line.
+func codexRole(record codexRecord) string {
+	if record.Payload.Role != "" {
+		return record.Payload.Role
+	}
+	return record.Payload.Type
+}
+
+// Transcript returns a redaction-ready excerpt of the session, keeping the end.
+func (s Scanner) Transcript(found Session, maxChars int) string {
+	lines, err := readTail(found.Path, s.MaxBytes)
+	if err != nil {
+		return ""
+	}
+	var builder strings.Builder
+	for _, item := range lines {
+		event, ok := parseEvent(found.Provider, item.Data)
+		if !ok || !event.real || strings.TrimSpace(event.text) == "" {
+			continue
+		}
+		builder.WriteString(event.role)
+		builder.WriteString(": ")
+		builder.WriteString(limitChars(event.text, 2000))
+		builder.WriteString("\n")
+	}
+	return tailChars(builder.String(), maxChars)
+}
+
+func limitChars(text string, max int) string {
+	if max <= 0 || len(text) <= max {
+		return text
+	}
+	return text[:max] + "…"
+}
+
+func tailChars(text string, max int) string {
+	if max <= 0 || len(text) <= max {
+		return text
+	}
+	return "…" + text[len(text)-max:]
 }

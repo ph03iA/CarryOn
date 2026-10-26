@@ -41,7 +41,7 @@ func fakeCodex() int {
 			return map[string]any{"userAgent": "fake-codex", "platformFamily": "windows", "platformOs": "windows"}, true
 		case "account/read":
 			return map[string]any{
-				"account":           map[string]any{"type": "chatgpt", "email": "dev@example.com"},
+				"account":            map[string]any{"type": "chatgpt", "email": "dev@example.com"},
 				"requiresOpenaiAuth": true,
 			}, true
 		case "account/rateLimits/read":
@@ -94,7 +94,7 @@ func serveRPC(handler func(method string) (any, bool)) int {
 		result, ok := handler(request.Method)
 		if !ok {
 			writeLine(map[string]any{
-				"id": *request.ID,
+				"id":    *request.ID,
 				"error": map[string]any{"code": -32601, "message": "unsupported"},
 			})
 			continue
