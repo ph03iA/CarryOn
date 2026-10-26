@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
+
+var uuidPattern = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
 
 // event is the normalized view of one log record.
 type event struct {
@@ -284,6 +287,9 @@ func (s Scanner) inspectSession(provider, path string) (Session, bool, error) {
 		found.ModTime = info.ModTime().UTC()
 	}
 	found.ID = sessionID(provider, path, lines)
+	if provider == Codex {
+		found.Cwd = codexHeadCwd(path)
+	}
 	cut := false
 	for index := len(lines) - 1; index >= 0; index-- {
 		event, ok := parseEvent(provider, lines[index].Data)
@@ -313,6 +319,9 @@ func (s Scanner) inspectSession(provider, path string) (Session, bool, error) {
 func sessionID(provider, path string, lines []line) string {
 	if provider != Codex {
 		return strings.TrimSuffix(filepath.Base(path), ".jsonl")
+	}
+	if id := uuidFromName(path); id != "" {
+		return id
 	}
 	for _, item := range lines {
 		var record codexRecord
@@ -458,6 +467,31 @@ func codexAssistantText(data []byte) string {
 	}
 	if record.Type == "response_item" && record.Payload.Role == "assistant" {
 		return strings.Join(codexContentText(record.Payload.Content), "\n")
+	}
+	return ""
+}
+
+// uuidFromName returns the last UUID in a Codex rollout filename.
+func uuidFromName(path string) string {
+	matches := uuidPattern.FindAllString(filepath.Base(path), -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	return matches[len(matches)-1]
+}
+
+// codexHeadCwd reads the folder from session_meta, which lives in the first
+// line and is lost when a large log is only read from the tail.
+func codexHeadCwd(path string) string {
+	head, err := readHead(path, 64<<10)
+	if err != nil {
+		return ""
+	}
+	for _, item := range head {
+		event, ok := parseEvent(Codex, item.Data)
+		if ok && event.cwd != "" {
+			return event.cwd
+		}
 	}
 	return ""
 }

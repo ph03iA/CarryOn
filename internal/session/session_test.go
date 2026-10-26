@@ -216,3 +216,34 @@ func TestCodexTranscriptIncludesPromptAndAssistantText(t *testing.T) {
 		t.Fatalf("tool call missing:\n%s", transcript)
 	}
 }
+
+func TestLargeCodexLogUsesFilenameIDAndHeadCwd(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "2026", "10", "26")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := "rollout-2026-10-26T09-50-00-11111111-2222-4333-8444-555555555555.jsonl"
+	var builder strings.Builder
+	builder.WriteString(`{"type":"session_meta","payload":{"id":"99999999-8888-4777-8666-555555555555","cwd":"C:\\real\\project"}}` + "\n")
+	pad := `{"type":"world_state","payload":{"pad":"` + strings.Repeat("x", 900) + `"}}` + "\n"
+	for builder.Len() < 400*1024 {
+		builder.WriteString(pad)
+	}
+	builder.WriteString(`{"type":"event_msg","payload":{"type":"error","message":"You have hit your usage limit."}}` + "\n")
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(builder.String()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := Scanner{CodexRoot: root, MaxBytes: 256 << 10}
+	found, ok, err := scanner.FindCutOff(Codex, time.Time{})
+	if err != nil || !ok {
+		t.Fatalf("scan: ok=%v err=%v", ok, err)
+	}
+	if found.ID != "11111111-2222-4333-8444-555555555555" {
+		t.Fatalf("id should come from the filename, got %s", found.ID)
+	}
+	if found.Cwd != `C:\real\project` {
+		t.Fatalf("cwd should come from the first line, got %q", found.Cwd)
+	}
+}

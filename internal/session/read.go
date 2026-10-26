@@ -85,3 +85,17 @@ func readFrom(path string, offset int64) ([]line, error) {
 	}
 	return splitLines(data, offset), nil
 }
+
+// readHead reads the first maxBytes of a log, keeping full lines.
+func readHead(path string, maxBytes int64) ([]line, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes))
+	if err != nil {
+		return nil, err
+	}
+	return splitLines(data, 0), nil
+}
