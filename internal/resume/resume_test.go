@@ -242,3 +242,21 @@ func assertMissing(t *testing.T, files []string, unwanted string) {
 		}
 	}
 }
+
+
+func TestGitArgsDisableFSMonitor(t *testing.T) {
+	got := gitArgs([]string{"status", "--porcelain"})
+	want := []string{"-c", "core.fsmonitor=false", "status", "--porcelain"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestGitEnvKeepsSecretsOut(t *testing.T) {
+	t.Setenv("RESEND_API_KEY", "re_canary_value")
+	t.Setenv("GEMINI_API_KEY", "gm_canary_value")
+	joined := strings.Join(gitEnv(), "\n")
+	if strings.Contains(joined, "re_canary_value") || strings.Contains(joined, "gm_canary_value") {
+		t.Fatal("a secret leaked into git's environment")
+	}
+}

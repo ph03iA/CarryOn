@@ -52,15 +52,23 @@ func (s gitSnapshot) changes(ctx context.Context, dir string) ([]string, string,
 func runGit(ctx context.Context, dir string, args ...string) string {
 	commandCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	command := exec.CommandContext(commandCtx, "git", args...)
+	command := exec.CommandContext(commandCtx, "git", gitArgs(args)...)
 	command.Dir = dir
-	command.Env = config.ChildEnvironment()
+	command.Env = gitEnv()
 	output, err := command.Output()
 	if err != nil {
 		return ""
 	}
 	return string(output)
 }
+
+// gitArgs disables fsmonitor so every diff reflects the tree immediately.
+func gitArgs(args []string) []string {
+	return append([]string{"-c", "core.fsmonitor=false"}, args...)
+}
+
+// gitEnv keeps the API keys out of git subprocesses.
+func gitEnv() []string { return config.ChildEnvironment() }
 
 func splitLines(text string) []string {
 	lines := make([]string, 0)
