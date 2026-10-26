@@ -137,3 +137,9 @@ func TestLoadSecretsPrefersEnvironment(t *testing.T) {
 		t.Fatalf("file value should be used: %q", secrets.Gemini)
 	}
 }
+
+func TestDefaultRecipientHasTheDoubleZero(t *testing.T) {
+	if got := Defaults().Recipient; got != "prajwalchahande07@gmail.com" {
+		t.Fatalf("default recipient is wrong: %s", got)
+	}
+}

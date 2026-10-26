@@ -96,13 +96,13 @@ RESEND_API_KEY=re_...
 GEMINI_API_KEY=...
 ```
 
-The default recipient is `prajwalchahande7@gmail.com` and the default sender is `onboarding@resend.dev`. The Resend onboarding sender can only deliver to the email address on your Resend account. To send elsewhere, verify a domain in Resend and change `sender` in `config.json`.
+The default recipient is `prajwalchahande07@gmail.com` and the default sender is `onboarding@resend.dev`. The Resend onboarding sender can only deliver to the email address on your Resend account. To send elsewhere, verify a domain in Resend and change `sender` in `config.json`.
 
 `config.json` fields:
 
 | Field | Default | Meaning |
 | --- | --- | --- |
-| `recipient` | `prajwalchahande7@gmail.com` | Where email goes |
+| `recipient` | `prajwalchahande07@gmail.com` | Where email goes |
 | `sender` | `onboarding@resend.dev` | Verified Resend sender |
 | `gemini_model` | `gemini-flash-latest` | Model used for decisions |
 | `claude_bin` | empty | Optional explicit Claude executable |
