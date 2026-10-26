@@ -265,7 +265,7 @@ func TestFullJourneyWithRestart(t *testing.T) {
 	}
 }
 
-func TestCrashNeedsANewDecisionBeforeResuming(t *testing.T) {
+func TestCrashUsesThePostRunDecision(t *testing.T) {
 	h := newHarness(t)
 	h.step(t)
 
@@ -275,13 +275,14 @@ func TestCrashNeedsANewDecisionBeforeResuming(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Simulate a crash mid-run: claimed, running, incident resuming.
+	// A crashed run: claimed, running, and it wrote to the session log.
 	if _, err := h.db.ClaimResume(context.Background(), resumeRow.ID, 2, "first prompt"); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.db.StartResume(context.Background(), resumeRow.ID, "d1"); err != nil {
 		t.Fatal(err)
 	}
+	appendSessionEvent(t, h.root, `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Edited retry.go before the crash."}]},"uuid":"e0000000-0000-4000-8000-000000000009","timestamp":"2026-10-26T12:01:00.000Z","cwd":"C:\\work\\demo"}`)
 	if err := h.db.UpdateIncident(context.Background(), incident.ID, store.IncidentUpdate{
 		State: store.IncidentResuming, SessionID: incident.SessionID,
 		SessionPath: incident.SessionPath, SessionCwd: incident.SessionCwd,
@@ -291,7 +292,7 @@ func TestCrashNeedsANewDecisionBeforeResuming(t *testing.T) {
 
 	restarted, _ := newEngine(t, h.dbPath, h.root, h.provider, h.now)
 	restarted.Decider.(*fakeDecider).results = []decision.Result{
-		{Action: decision.ActionSkipDone, Reason: "the agent had already finished"},
+		{Action: decision.ActionDone, Reason: "the interrupted run had already finished"},
 	}
 	if err := restarted.Reconcile(context.Background()); err != nil {
 		t.Fatal(err)
@@ -305,17 +306,47 @@ func TestCrashNeedsANewDecisionBeforeResuming(t *testing.T) {
 	}
 
 	if calls := restarted.Runner.(*fakeRunner).calls; calls != 0 {
-		t.Fatalf("a crash must not resume without a new decision, got %d runs", calls)
+		t.Fatalf("the post-run decision said done, got %d runs", calls)
+	}
+	stored, err := restarted.DB.Incidents(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored[0].State != store.IncidentFinished {
+		t.Fatalf("incident should be finished: %+v", stored[0])
+	}
+	messages := restarted.Sender.(*fakeSender).sent
+	if len(messages) == 0 {
+		t.Fatal("expected a finish email")
+	}
+	last := messages[len(messages)-1]
+	if strings.Contains(last.Body, "already continued") {
+		t.Fatalf("crash was misreported as an external continuation:\n%s", last.Body)
+	}
+	if !strings.Contains(last.Body, "interrupted run had already finished") {
+		t.Fatalf("finish email missing the post-run decision:\n%s", last.Body)
 	}
 	decisions, err := restarted.DB.Decisions(context.Background(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(decisions) == 0 || decisions[0].Action != decision.ActionSkipDone {
-		t.Fatalf("a fresh decision should be recorded: %+v", decisions)
+	if len(decisions) == 0 || decisions[0].Stage != "post" || decisions[0].Action != decision.ActionDone {
+		t.Fatalf("expected a post-run decision: %+v", decisions)
 	}
 }
 
+func appendSessionEvent(t *testing.T, root, line string) {
+	t.Helper()
+	path := filepath.Join(root, "proj-a", fixtureSessionID+".jsonl")
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	if _, err := file.WriteString(line + "\n"); err != nil {
+		t.Fatal(err)
+	}
+}
 func TestDecisionFailureBlocksAndEmails(t *testing.T) {
 	h := newHarness(t)
 	h.step(t)

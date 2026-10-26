@@ -39,12 +39,14 @@ func (e *Engine) prepareCycle(ctx context.Context, incident store.Incident) (sto
 			return incident, session.Session{}, false, nil
 		}
 	}
-	continued, err := e.Scanner.Continued(found)
-	if err != nil {
-		return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentBlocked, "could not read the session log: "+err.Error())
-	}
-	if continued {
-		return incident, session.Session{}, false, e.skipContinued(ctx, incident, found)
+	if _, interrupted := e.interruptedResume(ctx, incident); !interrupted {
+		continued, err := e.Scanner.Continued(found)
+		if err != nil {
+			return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentBlocked, "could not read the session log: "+err.Error())
+		}
+		if continued {
+			return incident, session.Session{}, false, e.skipContinued(ctx, incident, found)
+		}
 	}
 	if err := e.DB.UpdateIncident(ctx, incident.ID, incidentUpdate(incident, store.IncidentDeciding, "reset confirmed")); err != nil {
 		return incident, session.Session{}, false, err
@@ -143,6 +145,9 @@ func (e *Engine) skipContinued(ctx context.Context, incident store.Incident, fou
 
 // decideAndResume asks Gemini, then acts on its answer.
 func (e *Engine) decideAndResume(ctx context.Context, incident store.Incident, found session.Session) error {
+	if record, interrupted := e.interruptedResume(ctx, incident); interrupted {
+		return e.resumeAfterCrash(ctx, incident, found, record)
+	}
 	transcript := e.Scanner.Transcript(found, e.Config.TailChars)
 	result, err := e.Decider.Decide(ctx, decision.Request{
 		Stage: "pre", Provider: incident.Provider, Cwd: found.Cwd,
@@ -353,4 +358,27 @@ func incidentUpdate(incident store.Incident, state, reason string) store.Inciden
 		SessionCwd: incident.SessionCwd, CutOffAt: incident.CutOffAt,
 		CutOffOffset: incident.CutOffOffset, Reason: reason,
 	}
+}
+
+// interruptedResume reports a run left in flight by a crash.
+func (e *Engine) interruptedResume(ctx context.Context, incident store.Incident) (store.Resume, bool) {
+	record, err := e.DB.ResumeForIncident(ctx, incident.Provider, incident.SessionID, incident.ID)
+	if err != nil {
+		return store.Resume{}, false
+	}
+	return record, record.State == store.ResumeInterrupted
+}
+
+// resumeAfterCrash asks for the post-run decision without treating CarryOn's
+// own interrupted run as someone else continuing the session.
+func (e *Engine) resumeAfterCrash(ctx context.Context, incident store.Incident, found session.Session, record store.Resume) error {
+	e.lastOutcome = resume.Outcome{ExitCode: -1, LastMessage: record.LastMessage}
+	next, err := e.postDecision(ctx, incident, found)
+	if err != nil {
+		return e.blockOnDecision(ctx, incident, found, "post", err)
+	}
+	if next.Action == decision.ActionResumeAgain {
+		return e.resumeLoop(ctx, incident, found, next)
+	}
+	return e.closeIncident(ctx, incident, store.IncidentFinished, next.Reason)
 }
