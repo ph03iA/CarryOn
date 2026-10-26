@@ -181,7 +181,7 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - **Two simulations at once.** `simulate` has no lock, so two can run together, spend real Gemini and agent usage, and both try to resume the same session.
 - **A crash during the scan or the post-run Gemini call.** A crash before the incident is recorded is retried on the next sweep. A crash during the post-run Gemini call can leave the run recorded without its finish email; on restart the session may look already continued and be skipped.
 - **Continuing during the Gemini call.** CarryOn checks for an external continuation before asking Gemini. If you continue the session while Gemini is deciding, CarryOn can still resume afterwards.
-- **Claude briefly reporting 100% after reset.** Confirmation needs a reading with no window at 100%, so the "back" email can arrive a few minutes after the stated reset.
+- **Resuming a few minutes early.** A window still at 100% whose reset time has passed is treated as reset, because its reset is no longer in the future. CarryOn can therefore resume a few minutes before Claude reports the window as available, and the agent may hit the limit again immediately.
 - **Emails after long downtime.** The outbox retries transient Resend failures up to eight times (about two hours). A machine that stays offline longer than that, or past Resend's 24-hour idempotency window, can lose or duplicate an event.
 - **Edits to already-untracked files.** The pre-run snapshot records untracked paths and excludes them, so later edits to a file that was already untracked are not listed in "files changed".
 - Windows only. There are no systemd or launchd service files.
