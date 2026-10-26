@@ -177,6 +177,11 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - Windows only. There are no systemd or launchd service files.
 - Smart App Control can block locally built unsigned executables. See Troubleshooting.
 
+## Verified
+
+- **2026-10-26 — Codex resume writes files.** Codex 0.163.0 on Windows: created a disposable session, then ran `codex exec resume <id> "Create a file named smoke.txt ..." -c sandbox_mode="workspace-write"`. The file was created with bytes `6F-6B` (`ok`). This is the one-time write check, not an automated test.
+- **2026-10-26 — Live usage probes.** The real Codex app-server and Claude `get_usage` probes both returned usage windows without sending a prompt.
+
 ## Troubleshooting
 
 **`An Application Control policy has blocked this file`**
