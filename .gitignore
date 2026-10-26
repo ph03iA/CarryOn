@@ -1,0 +1,15 @@
+# Build output
+/carryon.exe
+/carryon
+/bin/
+
+# Local secrets and state
+.env
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# Editor
+.vscode/
+.idea/
