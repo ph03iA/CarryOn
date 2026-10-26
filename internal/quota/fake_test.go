@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestMain lets the test binary double as a fake Claude or Codex CLI.
@@ -29,6 +30,8 @@ func runFake(mode string) int {
 		return fakeClaudeSignedOut()
 	case "codex_no_account":
 		return fakeCodexNoAccount()
+	case "hang":
+		return fakeHang()
 	}
 	fmt.Fprintln(os.Stderr, "unknown fake mode", mode)
 	return 2
@@ -192,4 +195,9 @@ func fakeEnv(mode string) []string {
 		env = append(env, entry)
 	}
 	return append(env, "CARRYON_FAKE_MODE="+mode)
+}
+
+func fakeHang() int {
+	time.Sleep(10 * time.Minute)
+	return 1
 }

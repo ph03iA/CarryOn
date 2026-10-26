@@ -58,6 +58,8 @@ func (c Claude) Read(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	defer process.Close()
+	stop := supervise(ctx, process, timeout)
+	defer stop()
 
 	conn := newClaudeConn(process.Stdin, process.Stdout)
 	init, err := conn.request("initialize", map[string]any{"subtype": "initialize"})

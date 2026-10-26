@@ -141,3 +141,41 @@ func TestLiveProbes(t *testing.T) {
 		}
 	}
 }
+
+func TestClaudeProbeTimesOut(t *testing.T) {
+	claude := Claude{Binary: fakeBinary(t), Env: fakeEnv("hang"), Timeout: 300 * time.Millisecond}
+	started := time.Now()
+	if _, err := claude.Read(context.Background()); err == nil {
+		t.Fatal("want an error when the probe never answers")
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("probe took %s; timeout was not enforced", elapsed)
+	}
+}
+
+func TestCodexProbeTimesOut(t *testing.T) {
+	codex := Codex{Binary: fakeBinary(t), Env: fakeEnv("hang"), Timeout: 300 * time.Millisecond}
+	started := time.Now()
+	if _, err := codex.Read(context.Background()); err == nil {
+		t.Fatal("want an error when the probe never answers")
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("probe took %s; timeout was not enforced", elapsed)
+	}
+}
+
+func TestCodexProbeStopsOnCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+	}()
+	codex := Codex{Binary: fakeBinary(t), Env: fakeEnv("hang"), Timeout: 30 * time.Second}
+	started := time.Now()
+	if _, err := codex.Read(ctx); err == nil {
+		t.Fatal("want an error after cancellation")
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("probe ignored cancellation for %s", elapsed)
+	}
+}

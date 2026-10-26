@@ -57,6 +57,8 @@ func (c Codex) Read(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	defer process.Close()
+	stop := supervise(ctx, process, timeout)
+	defer stop()
 
 	conn := newRPCConn(process.Stdin, process.Stdout)
 	account, limits, err := codexHandshake(conn)
