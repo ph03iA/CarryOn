@@ -175,9 +175,15 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - A crash after a resume starts consumes one attempt; further resumes need a fresh decision.
 - The two-resume budget is per limit incident, not per session forever. A session cut off by a later window gets a fresh budget.
 - "Files changed" compares against a snapshot taken before the run: a stash commit when the folder was dirty, or the pre-run HEAD when it was clean. Commits made by the agent therefore appear too, and your pre-existing work does not.
-- One instance only: `watch` and `simulate` take a named mutex and exit if another CarryOn holds it.
+- One instance only: `watch` takes `Global\CarryOn` and exits if another watcher holds it. `simulate` does not take the lock; the watcher skips simulated incidents.
 - The cut-off search only accepts sessions written after the current window started, and retries once at reset time.
-- Resend idempotency keys expire after 24 hours. The outbox retries within that window.
+- **Secrets cut at the clipping point.** The session tail is clipped by character count before redaction. A credential that straddles the cut can lose its recognisable prefix and survive; treat the excerpt as sensitive.
+- **Two simulations at once.** `simulate` has no lock, so two can run together, spend real Gemini and agent usage, and both try to resume the same session.
+- **A crash during the scan or the post-run Gemini call.** A crash before the incident is recorded is retried on the next sweep. A crash during the post-run Gemini call can leave the run recorded without its finish email; on restart the session may look already continued and be skipped.
+- **Continuing during the Gemini call.** CarryOn checks for an external continuation before asking Gemini. If you continue the session while Gemini is deciding, CarryOn can still resume afterwards.
+- **Claude briefly reporting 100% after reset.** Confirmation needs a reading with no window at 100%, so the "back" email can arrive a few minutes after the stated reset.
+- **Emails after long downtime.** The outbox retries transient Resend failures up to eight times (about two hours). A machine that stays offline longer than that, or past Resend's 24-hour idempotency window, can lose or duplicate an event.
+- **Edits to already-untracked files.** The pre-run snapshot records untracked paths and excludes them, so later edits to a file that was already untracked are not listed in "files changed".
 - Windows only. There are no systemd or launchd service files.
 - The logon task prefers `-LogonType S4U`, so it runs without a console window. If Windows needs admin rights or a "Log on as a batch job" policy, CarryOn falls back to an interactive logon task, which may briefly show a console window.
 - Smart App Control can block locally built unsigned executables. See Troubleshooting.
