@@ -3,16 +3,14 @@
 package winjob
 
 import (
-	"context"
 	"errors"
 	"os/exec"
-	"time"
 )
 
 // Job is a no-op placeholder off Windows.
 type Job struct{}
 
-func newJob() (*Job, error) { return &Job{}, nil }
+func newJob() (*Job, error) { return nil, ErrUnsupported }
 
 func (j *Job) Assign(int) error { return ErrUnsupported }
 
@@ -26,8 +24,4 @@ func resumeProcess(int) error { return ErrUnsupported }
 
 func killProcess(*exec.Cmd) {}
 
-func Run(context.Context, Spec) (Result, error) {
-	return Result{}, ErrUnsupported
-}
-
-var _ = time.Second
+var _ = errors.New
