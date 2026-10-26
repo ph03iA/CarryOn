@@ -27,3 +27,9 @@ func TestMutexCanBeReacquiredAfterRelease(t *testing.T) {
 	}
 	again.Release()
 }
+
+func TestMutexIsGlobal(t *testing.T) {
+	if Name != `Global\CarryOn` {
+		t.Fatalf("mutex must be global across Windows sessions, got %s", Name)
+	}
+}

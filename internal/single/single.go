@@ -2,7 +2,7 @@
 package single
 
 // Name is the per-session mutex shared by watch and simulate.
-const Name = `Local\CarryOn`
+const Name = `Global\CarryOn`
 
 // Lock is a held mutex.
 type Lock struct{ handle uintptr }
