@@ -2,6 +2,7 @@ package decision
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/ph03iA/CarryOn/internal/redact"
@@ -20,7 +21,7 @@ func BuildPrompt(request Request) (string, int) {
 	if tail <= 0 {
 		tail = defaultTailChars
 	}
-	transcript := trimTail(request.Transcript, tail)
+	transcript := stripMarkers(trimTail(request.Transcript, tail))
 	scrubbed := redact.Text(transcript)
 
 	var builder strings.Builder
@@ -29,7 +30,7 @@ func BuildPrompt(request Request) (string, int) {
 	builder.WriteString(scrubbed.Text)
 	builder.WriteString("\nEND UNTRUSTED SESSION EXCERPT\n")
 	if strings.TrimSpace(request.RunSummary) != "" {
-		summary := redact.Text(trimTail(request.RunSummary, tail))
+		summary := redact.Text(stripMarkers(trimTail(request.RunSummary, tail)))
 		builder.WriteString("\nBEGIN UNTRUSTED RUN EVIDENCE\n")
 		builder.WriteString(summary.Text)
 		builder.WriteString("\nEND UNTRUSTED RUN EVIDENCE\n")
@@ -76,4 +77,11 @@ func trimTail(text string, max int) string {
 		return text
 	}
 	return "…" + text[len(text)-max:]
+}
+
+var markerPattern = regexp.MustCompile(`(?im)^.*\b(?:BEGIN|END) UNTRUSTED [A-Z ]*\b.*$`)
+
+// stripMarkers removes forged wrapper lines from untrusted text.
+func stripMarkers(text string) string {
+	return strings.TrimSpace(markerPattern.ReplaceAllString(text, ""))
 }
