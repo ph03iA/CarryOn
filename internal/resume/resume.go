@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"time"
@@ -83,6 +82,7 @@ func (r Runner) Run(ctx context.Context, spec Spec) (Outcome, error) {
 		args = append(args, "-o", lastMessageFile)
 	}
 
+	snapshot := captureGit(ctx, spec.Cwd)
 	log := &tailBuffer{max: r.logLimit()}
 	started := time.Now()
 	result, err := winjob.Run(ctx, winjob.Spec{
@@ -104,7 +104,7 @@ func (r Runner) Run(ctx context.Context, spec Spec) (Outcome, error) {
 		RunLog:   log.String(),
 	}
 	outcome.LastMessage = readLastMessage(lastMessageFile, outcome.RunLog)
-	outcome.Files, outcome.DiffStat, outcome.DiffExcerpt = r.gitArtifacts(ctx, spec.Cwd)
+	outcome.Files, outcome.DiffStat, outcome.DiffExcerpt = snapshot.changes(ctx, spec.Cwd)
 	outcome.TestOutput = testExcerpt(outcome.RunLog)
 	return outcome, nil
 }
@@ -171,54 +171,6 @@ func testExcerpt(runLog string) string {
 	}
 	matches := testOutputPattern.FindAllString(runLog, 40)
 	return summarize(strings.Join(matches, "\n"))
-}
-
-// gitArtifacts reads changed files and diffs from the session folder.
-func (r Runner) gitArtifacts(ctx context.Context, dir string) ([]string, string, string) {
-	status := runGit(ctx, dir, "status", "--porcelain")
-	diff := runGit(ctx, dir, "diff")
-	staged := runGit(ctx, dir, "diff", "--cached")
-	files := changedFiles(status)
-	combined := diff + "\n" + staged
-	return files, summarize(runGit(ctx, dir, "diff", "--stat")), summarize(combined)
-}
-
-func runGit(ctx context.Context, dir string, args ...string) string {
-	commandCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-	defer cancel()
-	command := exec.CommandContext(commandCtx, "git", args...)
-	command.Dir = dir
-	output, err := command.Output()
-	if err != nil {
-		return ""
-	}
-	return string(output)
-}
-
-// changedFiles parses porcelain status lines into paths.
-func changedFiles(status string) []string {
-	seen := make(map[string]bool)
-	var files []string
-	for _, raw := range strings.Split(status, "\n") {
-		path := strings.TrimSpace(raw)
-		if len(path) < 4 {
-			continue
-		}
-		path = strings.TrimSpace(path[2:])
-		if index := strings.LastIndex(path, " -> "); index >= 0 {
-			path = path[index+4:]
-		}
-		path = strings.Trim(path, `"`)
-		if path == "" || seen[path] {
-			continue
-		}
-		seen[path] = true
-		files = append(files, path)
-		if len(files) >= 50 {
-			break
-		}
-	}
-	return files
 }
 
 func summarize(text string) string {

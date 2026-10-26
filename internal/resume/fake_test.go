@@ -23,6 +23,12 @@ func runFake(mode string) int {
 	case "claude":
 		os.WriteFile(filepath.Join(cwd, "resumed.txt"), []byte("ok"), 0o600)
 		fmt.Println("Finished the task and wrote resumed.txt")
+	case "claude_edit":
+		file, _ := os.OpenFile(filepath.Join(cwd, "tracked.txt"), os.O_APPEND|os.O_WRONLY, 0o600)
+		file.WriteString("run edit\n")
+		file.Close()
+		os.WriteFile(filepath.Join(cwd, "resumed.txt"), []byte("ok"), 0o600)
+		fmt.Println("Edited tracked.txt")
 	case "codex":
 		writeLastMessage()
 		os.WriteFile(filepath.Join(cwd, "codex-output.txt"), []byte("ok"), 0o600)

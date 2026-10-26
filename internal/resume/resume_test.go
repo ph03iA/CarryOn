@@ -3,6 +3,7 @@ package resume
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -174,15 +175,6 @@ func TestEnvironmentKeepsSecretsOut(t *testing.T) {
 	}
 }
 
-func TestChangedFilesParsesPorcelain(t *testing.T) {
-	status := " M internal/a.go\n?? internal/b_test.go\nR  old.go -> new.go\n"
-	files := changedFiles(status)
-	want := []string{"internal/a.go", "internal/b_test.go", "new.go"}
-	if !reflect.DeepEqual(files, want) {
-		t.Fatalf("got %q want %q", files, want)
-	}
-}
-
 func TestTestExcerptOnlyWhenTestsRan(t *testing.T) {
 	if got := testExcerpt("just some output\nFAILED to compile"); got != "" {
 		t.Fatalf("must not report tests when none ran: %q", got)
@@ -190,5 +182,63 @@ func TestTestExcerptOnlyWhenTestsRan(t *testing.T) {
 	got := testExcerpt("$ go test ./...\nok  example  0.1s\nFAIL example/two")
 	if !strings.Contains(got, "ok  example") || !strings.Contains(got, "FAIL example/two") {
 		t.Fatalf("unexpected excerpt: %q", got)
+	}
+}
+
+func TestRunReportsOnlyChangesMadeDuringTheRun(t *testing.T) {
+	dir := t.TempDir()
+	runGitForTest(t, dir, "init")
+	runGitForTest(t, dir, "config", "user.email", "test@example.com")
+	runGitForTest(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "tracked.txt"), []byte("base\n"), 0o600)
+	os.WriteFile(filepath.Join(dir, "mine.txt"), []byte("base\n"), 0o600)
+	runGitForTest(t, dir, "add", "-A")
+	runGitForTest(t, dir, "commit", "-m", "baseline")
+
+	// Pre-existing dirty work that CarryOn must not claim.
+	os.WriteFile(filepath.Join(dir, "mine.txt"), []byte("my local edit\n"), 0o600)
+	os.WriteFile(filepath.Join(dir, "mine-untracked.txt"), []byte("mine\n"), 0o600)
+
+	runner := Runner{ClaudeBin: fakeBinary(t), Env: fakeEnv("claude_edit"), Timeout: 30 * time.Second}
+	outcome, err := runner.Run(context.Background(), Spec{
+		Provider: "claude", SessionID: "sid", Cwd: dir, Prompt: "continue",
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	assertContains(t, outcome.Files, "tracked.txt")
+	assertContains(t, outcome.Files, "resumed.txt")
+	assertMissing(t, outcome.Files, "mine.txt")
+	assertMissing(t, outcome.Files, "mine-untracked.txt")
+	if strings.Contains(outcome.DiffExcerpt, "my local edit") {
+		t.Fatalf("diff excerpt includes pre-existing work:\n%s", outcome.DiffExcerpt)
+	}
+}
+
+func runGitForTest(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	command := exec.Command("git", args...)
+	command.Dir = dir
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, output)
+	}
+}
+
+func assertContains(t *testing.T, files []string, want string) {
+	t.Helper()
+	for _, file := range files {
+		if file == want {
+			return
+		}
+	}
+	t.Fatalf("%s missing from %v", want, files)
+}
+
+func assertMissing(t *testing.T, files []string, unwanted string) {
+	t.Helper()
+	for _, file := range files {
+		if file == unwanted {
+			t.Fatalf("%s must not be reported: %v", unwanted, files)
+		}
 	}
 }
