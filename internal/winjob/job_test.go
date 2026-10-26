@@ -6,13 +6,24 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
 func TestMain(m *testing.M) {
-	if mode := os.Getenv("CARRYON_FAKE_MODE"); mode == "heartbeat" {
+	mode := os.Getenv("CARRYON_FAKE_MODE")
+	if mode == "leaky" {
+		leakyChild()
+		return
+	}
+	if mode == "sleeper" {
+		time.Sleep(30 * time.Second)
+		return
+	}
+	if mode == "heartbeat" {
 		cwd, _ := os.Getwd()
 		path := filepath.Join(cwd, "heartbeat.txt")
 		for {
@@ -95,5 +106,57 @@ func assertStopped(t *testing.T, path string) {
 	if !after.ModTime().Equal(before.ModTime()) {
 		fmt.Println("heartbeat still moving; process survived")
 		t.Fatal("process survived the job close")
+	}
+}
+
+func leakyChild() {
+	child := exec.Command(os.Args[0])
+	env := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "CARRYON_FAKE_MODE=") {
+			env = append(env, entry)
+		}
+	}
+	child.Env = append(env, "CARRYON_FAKE_MODE=sleeper")
+	child.Stdout = os.Stdout
+	child.Stderr = os.Stderr
+	_ = child.Start()
+}
+
+func leakyEnv() []string {
+	env := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		if entry == "CARRYON_FAKE_MODE=leaky" {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env, "CARRYON_FAKE_MODE=leaky")
+}
+
+func TestWaitDelayDoesNotFailTheRun(t *testing.T) {
+	previous := waitDelay
+	waitDelay = 200 * time.Millisecond
+	defer func() { waitDelay = previous }()
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	result, err := Run(context.Background(), Spec{
+		Path: exe, Dir: t.TempDir(), Env: leakyEnv(), Timeout: 3 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if result.TimedOut {
+		t.Fatal("a background child holding stdout must not consume the whole timeout")
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("want exit 0 after WaitDelay, got %d", result.ExitCode)
+	}
+	if time.Since(started) > 5*time.Second {
+		t.Fatalf("run took %s", time.Since(started))
 	}
 }

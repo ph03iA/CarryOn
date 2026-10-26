@@ -14,6 +14,9 @@ import (
 // ErrUnsupported is returned when the platform cannot provide job objects.
 var ErrUnsupported = errors.New("job objects are only available on Windows")
 
+// waitDelay bounds how long Wait keeps reading pipes after the process exits.
+var waitDelay = 10 * time.Second
+
 // Spec describes one supervised process.
 type Spec struct {
 	Path    string
@@ -50,6 +53,7 @@ func Start(spec Spec) (*Process, error) {
 		return nil, errors.New("process path is required")
 	}
 	command := exec.Command(spec.Path, spec.Args...)
+	command.WaitDelay = waitDelay
 	command.Dir = spec.Dir
 	command.Env = spec.Env
 	command.Stderr = spec.Stderr
@@ -181,6 +185,9 @@ func classify(waitErr error) (int, bool) {
 	switch {
 	case errors.Is(waitErr, errTimedOut), errors.Is(waitErr, errCancelled):
 		return -1, true
+	case errors.Is(waitErr, exec.ErrWaitDelay):
+		// The process exited; only a background child held the pipes open.
+		return 0, false
 	case waitErr == nil:
 		return 0, false
 	}
