@@ -25,6 +25,9 @@ func assemble(db *store.DB, cfg config.Config, secrets config.Secrets, log *logx
 	if gemini, err := decision.NewGemini(context.Background(), secrets.Gemini, cfg.GeminiModel); err != nil {
 		decider = decision.Unavailable{Err: err}
 	} else {
+		if log != nil {
+			gemini.Log = log.Infof
+		}
 		decider = gemini
 	}
 	built := &engine.Engine{

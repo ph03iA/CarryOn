@@ -2,6 +2,7 @@ package decision
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -10,20 +11,31 @@ import (
 	"google.golang.org/genai"
 )
 
-type fakeTransport struct {
+type fakeResponse struct {
 	status int
 	body   string
-	seen   string
+}
+
+type fakeTransport struct {
+	status     int
+	body       string
+	responses  []fakeResponse
+	seen       string
+	seenBodies []string
 }
 
 func (f *fakeTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	payload, _ := io.ReadAll(request.Body)
 	f.seen = string(payload)
-	status := f.status
+	f.seenBodies = append(f.seenBodies, f.seen)
+
+	status, body := f.status, f.body
+	if index := len(f.seenBodies) - 1; index < len(f.responses) {
+		status, body = f.responses[index].status, f.responses[index].body
+	}
 	if status == 0 {
 		status = http.StatusOK
 	}
-	body := f.body
 	if body == "" {
 		body = `{"candidates":[{"content":{"role":"model","parts":[{"text":"{\"action\":\"resume\",\"reason\":\"work remains\",\"prompt\":\"add the missing test\"}"}]},"finishReason":"STOP"}]}`
 	}
@@ -175,5 +187,56 @@ func TestBuildPromptStripsForgedMarkers(t *testing.T) {
 	}
 	if !strings.Contains(text, "real user text") {
 		t.Fatal("data was lost")
+	}
+}
+
+func TestGeminiSendsSmallThinkingBudget(t *testing.T) {
+	transport := &fakeTransport{}
+	gemini := newTestGemini(t, transport)
+	if _, err := gemini.Decide(context.Background(), preRequest()); err != nil {
+		t.Fatalf("decide: %v", err)
+	}
+	if !strings.Contains(transport.seen, "thinkingConfig") || !strings.Contains(transport.seen, "thinkingBudget") {
+		t.Fatalf("request has no thinking budget:\n%s", transport.seen)
+	}
+	if !strings.Contains(transport.seen, `"thinkingBudget":128`) {
+		t.Fatalf("thinking budget is not small:\n%s", transport.seen)
+	}
+}
+
+func TestGeminiLogsCallDuration(t *testing.T) {
+	transport := &fakeTransport{}
+	gemini := newTestGemini(t, transport)
+	var logged []string
+	gemini.Log = func(format string, args ...any) {
+		logged = append(logged, fmt.Sprintf(format, args...))
+	}
+	if _, err := gemini.Decide(context.Background(), preRequest()); err != nil {
+		t.Fatalf("decide: %v", err)
+	}
+	joined := strings.Join(logged, "\n")
+	if !strings.Contains(joined, "pre") || !strings.Contains(joined, "took") {
+		t.Fatalf("duration not logged:\n%s", joined)
+	}
+}
+
+func TestGeminiRetriesWithoutThinkingWhenRejected(t *testing.T) {
+	transport := &fakeTransport{responses: []fakeResponse{
+		{status: http.StatusBadRequest, body: `{"error":{"code":400,"message":"thinkingBudget is not supported","status":"INVALID_ARGUMENT"}}`},
+		{status: http.StatusOK, body: ""},
+	}}
+	gemini := newTestGemini(t, transport)
+	result, err := gemini.Decide(context.Background(), preRequest())
+	if err != nil {
+		t.Fatalf("retry should succeed: %v", err)
+	}
+	if result.Action != ActionResume {
+		t.Fatalf("unexpected action: %s", result.Action)
+	}
+	if len(transport.seenBodies) != 2 {
+		t.Fatalf("want two attempts, got %d", len(transport.seenBodies))
+	}
+	if strings.Contains(transport.seenBodies[1], "thinkingConfig") {
+		t.Fatalf("retry kept the thinking config:\n%s", transport.seenBodies[1])
 	}
 }
