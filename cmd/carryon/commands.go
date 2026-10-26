@@ -111,7 +111,7 @@ func runWatch(ctx context.Context, paths config.Paths, args []string) error {
 		interval = parsed
 	}
 	if hasFlag(args, "--once") {
-		return built.Step(ctx)
+		return built.RunOnce(ctx)
 	}
 	log.Infof("watching every %s; state in %s", interval, paths.Dir)
 	return built.Run(ctx, interval)

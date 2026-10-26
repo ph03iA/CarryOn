@@ -60,9 +60,13 @@ type fakeRunner struct {
 	outcome resume.Outcome
 	err     error
 	specs   []resume.Spec
+	release chan struct{}
 }
 
 func (f *fakeRunner) Run(_ context.Context, spec resume.Spec) (resume.Outcome, error) {
+	if f.release != nil {
+		<-f.release
+	}
 	f.calls++
 	f.specs = append(f.specs, spec)
 	return f.outcome, f.err
@@ -785,5 +789,35 @@ func TestResumeStartFailureSendsFinishEmail(t *testing.T) {
 	}
 	if !strings.Contains(last.Body, "could not start") || !strings.Contains(last.Body, "spawn failed") {
 		t.Fatalf("finish email missing the start failure:\n%s", last.Body)
+	}
+}
+
+func TestRunOnceWaitsForResume(t *testing.T) {
+	h := newHarness(t)
+	h.engine.Synchronous = false
+	release := make(chan struct{})
+	h.runner.release = release
+	h.step(t)
+
+	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
+	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
+
+	done := make(chan error, 1)
+	go func() { done <- h.engine.RunOnce(context.Background()) }()
+	select {
+	case <-done:
+		t.Fatal("RunOnce returned before the resume finished")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("RunOnce: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("RunOnce did not return after the resume finished")
 	}
 }

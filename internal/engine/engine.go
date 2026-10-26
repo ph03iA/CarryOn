@@ -354,3 +354,12 @@ func (e *Engine) sendNeedsYou(ctx context.Context, incident store.Incident) erro
 		Simulated: incident.Simulated, Now: e.now(),
 	})
 }
+
+// RunOnce performs one cycle and waits for any resume it starts, so a --once
+// command does not exit and kill the agent.
+func (e *Engine) RunOnce(ctx context.Context) error {
+	previous := e.Synchronous
+	e.Synchronous = true
+	defer func() { e.Synchronous = previous }()
+	return e.Step(ctx)
+}
