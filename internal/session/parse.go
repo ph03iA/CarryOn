@@ -1,7 +1,9 @@
 package session
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +24,7 @@ var claudeRealTypes = map[string]bool{"user": true, "assistant": true, "result":
 
 var codexEventTypes = map[string]bool{
 	"task_started": true, "task_complete": true, "turn_aborted": true,
-	"error": true, "stream_error": true, "item_completed": true, "token_count": true,
+	"error": true, "stream_error": true, "item_completed": true, "token_count": true, "agent_message": true,
 }
 
 var codexResponseTypes = map[string]bool{
@@ -47,10 +49,8 @@ type claudeRecord struct {
 	Timestamp         string `json:"timestamp"`
 	Result            string `json:"result"`
 	Message           *struct {
-		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
-		} `json:"content"`
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
 	} `json:"message"`
 }
 
@@ -64,7 +64,8 @@ func parseClaudeEvent(data []byte) (event, bool) {
 	}
 	text := record.Result
 	if record.Message != nil {
-		text = strings.Join(claudeTexts(record.Message.Content), "\n")
+		texts, extras := claudeParts(record.Message.Content)
+		text = strings.Join(append(texts, extras...), "\n")
 	}
 	return event{
 		real:       true,
@@ -76,17 +77,40 @@ func parseClaudeEvent(data []byte) (event, bool) {
 	}, true
 }
 
-func claudeTexts(content []struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}) []string {
-	texts := make([]string, 0, len(content))
-	for _, part := range content {
-		if part.Text != "" {
-			texts = append(texts, part.Text)
+// claudeParts accepts both a plain string and a block list, and keeps tool
+// names and inputs so the decision prompt can see what the agent was doing.
+func claudeParts(raw json.RawMessage) (texts, extras []string) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil, nil
+	}
+	if trimmed[0] == '"' {
+		var text string
+		if json.Unmarshal(trimmed, &text) == nil && text != "" {
+			texts = append(texts, text)
+		}
+		return texts, nil
+	}
+	var blocks []struct {
+		Type  string          `json:"type"`
+		Text  string          `json:"text"`
+		Name  string          `json:"name"`
+		Input json.RawMessage `json:"input"`
+	}
+	if json.Unmarshal(trimmed, &blocks) != nil {
+		return nil, nil
+	}
+	for _, block := range blocks {
+		switch block.Type {
+		case "text":
+			if block.Text != "" {
+				texts = append(texts, block.Text)
+			}
+		case "tool_use":
+			extras = append(extras, fmt.Sprintf("[tool %s] %s", block.Name, compact(block.Input)))
 		}
 	}
-	return texts
+	return texts, extras
 }
 
 func claudeLimitError(record claudeRecord, text string) bool {
@@ -102,14 +126,18 @@ func claudeLimitError(record claudeRecord, text string) bool {
 type codexRecord struct {
 	Type      string `json:"type"`
 	Timestamp string `json:"timestamp"`
-	Payload   struct {
-		Type             string `json:"type"`
-		ID               string `json:"id"`
-		Role             string `json:"role"`
-		Cwd              string `json:"cwd"`
-		Message          string `json:"message"`
-		Reason           string `json:"reason"`
-		LastAgentMessage string `json:"last_agent_message"`
+Payload struct {
+		Type             string          `json:"type"`
+		ID               string          `json:"id"`
+		Role             string          `json:"role"`
+		Cwd              string          `json:"cwd"`
+		Message          string          `json:"message"`
+		Reason           string          `json:"reason"`
+		LastAgentMessage string          `json:"last_agent_message"`
+		Name             string          `json:"name"`
+		Arguments        string          `json:"arguments"`
+		Input            string          `json:"input"`
+		Content          json.RawMessage `json:"content"`
 		RateLimits       *struct {
 			RateLimitReachedType *string `json:"rate_limit_reached_type"`
 		} `json:"rate_limits"`
@@ -127,7 +155,7 @@ func parseCodexEvent(data []byte) (event, bool) {
 	if !codexReal(record) {
 		return event{}, false
 	}
-	text := record.Payload.Message + " " + record.Payload.Reason
+	text := codexText(record)
 	return event{
 		real:       true,
 		limitError: codexLimitError(record),
@@ -136,6 +164,76 @@ func parseCodexEvent(data []byte) (event, bool) {
 		role:       codexRole(record),
 		at:         parseTimestamp(record.Timestamp),
 	}, true
+}
+
+// codexText collects message text, tool names and tool arguments.
+func codexText(record codexRecord) string {
+	parts := make([]string, 0, 4)
+	appendNonEmpty(&parts, record.Payload.Message)
+	parts = append(parts, codexContentText(record.Payload.Content)...)
+	if tool := codexTool(record); tool != "" {
+		parts = append(parts, tool)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func codexTool(record codexRecord) string {
+	if record.Payload.Type != "function_call" && record.Payload.Type != "custom_tool_call" {
+		return ""
+	}
+	argument := record.Payload.Arguments
+	if argument == "" {
+		argument = record.Payload.Input
+	}
+	if record.Payload.Name == "" && argument == "" {
+		return ""
+	}
+	return fmt.Sprintf("[tool %s] %s", record.Payload.Name, compactText(argument))
+}
+
+// codexContentText reads content blocks such as [{type,input_text,text}].
+func codexContentText(raw json.RawMessage) []string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || string(trimmed) == "null" {
+		return nil
+	}
+	if trimmed[0] == '"' {
+		var text string
+		if json.Unmarshal(trimmed, &text) == nil && text != "" {
+			return []string{text}
+		}
+		return nil
+	}
+	var blocks []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(trimmed, &blocks) != nil {
+		return nil
+	}
+	texts := make([]string, 0, len(blocks))
+	for _, block := range blocks {
+		if block.Text != "" {
+			texts = append(texts, block.Text)
+		}
+	}
+	return texts
+}
+
+func appendNonEmpty(parts *[]string, value string) {
+	if strings.TrimSpace(value) != "" {
+		*parts = append(*parts, value)
+	}
+}
+
+func compact(raw json.RawMessage) string { return compactText(string(raw)) }
+
+func compactText(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if len(trimmed) <= 300 {
+		return trimmed
+	}
+	return trimmed[:300] + "…"
 }
 
 func codexReal(record codexRecord) bool {
@@ -291,14 +389,7 @@ func (s Scanner) LastMessage(found Session) string {
 
 func assistantText(provider string, data []byte) string {
 	if provider == Codex {
-		var record codexRecord
-		if json.Unmarshal(data, &record) != nil {
-			return ""
-		}
-		if record.Payload.Type == "task_complete" && record.Payload.LastAgentMessage != "" {
-			return record.Payload.LastAgentMessage
-		}
-		return ""
+		return codexAssistantText(data)
 	}
 	var record claudeRecord
 	if json.Unmarshal(data, &record) != nil || record.Type != "assistant" || record.IsAPIErrorMessage {
@@ -307,7 +398,8 @@ func assistantText(provider string, data []byte) string {
 	if record.Message == nil {
 		return ""
 	}
-	return strings.Join(claudeTexts(record.Message.Content), "\n")
+	texts, _ := claudeParts(record.Message.Content)
+	return strings.Join(texts, "\n")
 }
 
 // codexRole names the speaker for a transcript line.
@@ -350,4 +442,22 @@ func tailChars(text string, max int) string {
 		return text
 	}
 	return "…" + text[len(text)-max:]
+}
+
+// codexAssistantText returns the agent's own words, not tool traffic.
+func codexAssistantText(data []byte) string {
+	var record codexRecord
+	if json.Unmarshal(data, &record) != nil {
+		return ""
+	}
+	if record.Payload.Type == "task_complete" && record.Payload.LastAgentMessage != "" {
+		return record.Payload.LastAgentMessage
+	}
+	if record.Type == "event_msg" && record.Payload.Type == "agent_message" {
+		return record.Payload.Message
+	}
+	if record.Type == "response_item" && record.Payload.Role == "assistant" {
+		return strings.Join(codexContentText(record.Payload.Content), "\n")
+	}
+	return ""
 }

@@ -33,7 +33,7 @@ func TestFindClaudeCutOff(t *testing.T) {
 	if found.CutOffAt.IsZero() {
 		t.Fatal("expected a cut-off timestamp")
 	}
-	if !strings.Contains(found.LastMessage, "read the failing test") {
+	if !strings.Contains(found.LastMessage, "read the failing checkout test") {
 		t.Fatalf("expected the last assistant message, got %q", found.LastMessage)
 	}
 }
@@ -178,5 +178,41 @@ func TestFindCutOffAcceptsSessionsInsideTheWindow(t *testing.T) {
 	}
 	if found.ID == "" {
 		t.Fatal("expected a session id")
+	}
+}
+
+func TestClaudeTranscriptIncludesPromptAndAssistantText(t *testing.T) {
+	scanner := claudeScanner("cutoff")
+	found, ok, err := scanner.FindCutOff(Claude, time.Time{})
+	if err != nil || !ok {
+		t.Fatalf("scan: ok=%v err=%v", ok, err)
+	}
+	transcript := scanner.Transcript(found, 16000)
+	if !strings.Contains(transcript, "Fix the failing checkout test") {
+		t.Fatalf("user prompt missing:\n%s", transcript)
+	}
+	if !strings.Contains(transcript, "read the failing checkout test") {
+		t.Fatalf("assistant text missing:\n%s", transcript)
+	}
+	if !strings.Contains(transcript, "[tool Read]") {
+		t.Fatalf("tool use missing:\n%s", transcript)
+	}
+}
+
+func TestCodexTranscriptIncludesPromptAndAssistantText(t *testing.T) {
+	scanner := codexScanner("cutoff")
+	found, ok, err := scanner.FindCutOff(Codex, time.Time{})
+	if err != nil || !ok {
+		t.Fatalf("scan: ok=%v err=%v", ok, err)
+	}
+	transcript := scanner.Transcript(found, 16000)
+	if !strings.Contains(transcript, "Fix the parser in parser.go") {
+		t.Fatalf("user prompt missing:\n%s", transcript)
+	}
+	if !strings.Contains(transcript, "update the parser now") {
+		t.Fatalf("assistant text missing:\n%s", transcript)
+	}
+	if !strings.Contains(transcript, "[tool exec]") {
+		t.Fatalf("tool call missing:\n%s", transcript)
 	}
 }

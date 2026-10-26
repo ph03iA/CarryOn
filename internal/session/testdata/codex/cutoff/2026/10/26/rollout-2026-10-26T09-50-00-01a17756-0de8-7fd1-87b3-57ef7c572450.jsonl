@@ -1,0 +1,6 @@
+{"timestamp":"2026-10-26T09:50:00.000Z","ordinal":0,"type":"session_meta","payload":{"id":"01a17756-0de8-7fd1-87b3-57ef7c572450","cwd":"C:\\work\\codexdemo","cli_version":"0.163.0"}}
+{"timestamp":"2026-10-26T09:50:01.000Z","ordinal":1,"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-1"}}
+{"timestamp":"2026-10-26T09:50:02.000Z","ordinal":2,"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the parser in parser.go"}]}}
+{"timestamp":"2026-10-26T09:50:03.000Z","ordinal":3,"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I'll update the parser now."}]}}
+{"timestamp":"2026-10-26T09:50:04.000Z","ordinal":4,"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","input":"text(await tools.exec_command({cmd:\"go test ./...\"}))"}}
+{"timestamp":"2026-10-26T10:05:00.000Z","ordinal":5,"type":"event_msg","payload":{"type":"error","message":"You've hit your usage limit. Try again at 3:00 PM."}}
