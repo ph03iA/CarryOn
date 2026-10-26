@@ -1,0 +1,8 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Add the retry helper"}]},"uuid":"c0000000-0000-4000-8000-000000000001","timestamp":"2026-10-26T08:00:00.000Z","cwd":"C:\\work\\trailing","sessionId":"33333333-3333-4333-8333-333333333333"}
+{"type":"assistant","message":{"role":"assistant","model":"claude-sonnet-4-5","content":[{"type":"text","text":"Adding the helper now."}]},"uuid":"c0000000-0000-4000-8000-000000000002","timestamp":"2026-10-26T08:01:00.000Z","cwd":"C:\\work\\trailing","sessionId":"33333333-3333-4333-8333-333333333333"}
+{"type":"assistant","isApiErrorMessage":true,"message":{"role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"Claude usage limit reached. Resets at 4:00 PM."}]},"uuid":"c0000000-0000-4000-8000-000000000003","timestamp":"2026-10-26T08:05:00.000Z","cwd":"C:\\work\\trailing","sessionId":"33333333-3333-4333-8333-333333333333"}
+{"type":"file-history-snapshot","messageId":"c0000000-0000-4000-8000-000000000002","snapshot":{"trackedFileBackups":{}},"timestamp":"2026-10-26T08:05:01.000Z"}
+{"type":"file-history-delta","trackedFileBackups":{"retry.go":"abc"},"timestamp":"2026-10-26T08:05:02.000Z"}
+{"type":"queue-operation","operation":"dequeue","timestamp":"2026-10-26T08:05:03.000Z"}
+{"type":"custom-title","customTitle":"retry helper","sessionId":"33333333-3333-4333-8333-333333333333"}
+{"type":"last-prompt","lastPrompt":"Add the retry helper","sessionId":"33333333-3333-4333-8333-333333333333"}
