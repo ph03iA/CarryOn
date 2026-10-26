@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CarryOn: a manual for resuming work through usage limits</title>
-<meta name="description" content="CarryOn is a local Windows agent that watches [CC] and Codex usage, waits for a confirmed reset, asks Gemini whether to continue, and resumes the session by ID.">
+<meta name="description" content="CarryOn is a local Windows agent that watches Claude Code and Codex usage, waits for a confirmed reset, asks Gemini whether to continue, and resumes the session by ID.">
 <meta name="theme-color" content="#f3efe4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1c1a17" media="(prefers-color-scheme: dark)">
 <style>
@@ -137,7 +137,7 @@ pre code { font-size: inherit; }
   text-transform: uppercase;
   text-decoration: none;
 }
-.masthead nav a:hover { color: var(--accent); text-decoration: underline; }
+.masthead nav a:hover { color: var(--accent); }
 
 /* Hero */
 
@@ -384,8 +384,8 @@ footer .colophon { flex: 1 1 100%; }
   <section class="hero wrap" aria-labelledby="title">
     <p class="kicker">Usage limits, handled locally</p>
     <h1 id="title">Keep your work going when the limit runs out</h1>
-    <p class="lede">CarryOn is a small Windows program that watches your [CC] and Codex plan usage every minute without sending a prompt. When a limit runs out it records the incident, waits for the reset, asks Gemini whether the cut-off session is worth continuing, and resumes that session by its ID. You get an email when the limit comes back and when the resumed run finishes.</p>
-    <p class="hero-meta">Windows 10 or 11. Go 1.26 or newer. Everything runs on your own machine.</p>
+    <p class="lede">CarryOn is a small Windows program that watches your Claude Code and Codex plan usage every minute without sending a prompt. When a limit runs out it records the incident, waits for the reset, asks Gemini whether the cut-off session is worth continuing, and resumes that session by its ID. You get an email when the limit comes back and when the resumed run finishes.</p>
+    <p class="hero-meta">Windows 10 or 11. Go 1.26 or newer. The watcher and the agents run on your own machine.</p>
   </section>
 
   <section class="part wrap" id="what" aria-labelledby="what-title">
@@ -406,7 +406,7 @@ footer .colophon { flex: 1 1 100%; }
     <div class="part-body">
       <ol class="steps">
         <li><p><strong>The limit hits 100 percent.</strong> CarryOn records one incident for that provider, window, and reset time, and notes the session log that the limit cut off. No email is sent when a limit runs out.</p></li>
-        <li><p><strong>The reset is confirmed with a fresh reading.</strong> The reset counts only when a new reading is taken after the reset time, is under two minutes old, is for the same account, and shows no window still at 100 percent.</p></li>
+        <li><p><strong>The reset is confirmed with a fresh reading.</strong> The reset counts only when a new reading is taken after the reset time, is under two minutes old, is for the same account, and shows no window still at 100 percent with a future reset.</p></li>
         <li><p><strong>Gemini decides.</strong> The tail of the cut-off session, the folder, the limit, and the reset time go to Gemini, which returns one decision: resume, skip because the task looks done, or skip because the agent looked stuck.</p></li>
         <li><p><strong>The back email goes out.</strong> One email leads with the provider being back and says what CarryOn did, for example resuming your session in a folder, nothing to resume, or skipped with a reason.</p></li>
         <li><p><strong>The session resumes by ID.</strong> The agent runs in the session's folder against that session's ID, so it continues the same conversation rather than the newest one in the folder.</p></li>
@@ -449,9 +449,9 @@ footer .colophon { flex: 1 1 100%; }
     <div class="part-body">
       <figure>
         <figcaption>Example: the back email</figcaption>
-        <pre><code>Subject: CarryOn: [CC] is back
+        <pre><code>Subject: CarryOn: Claude Code is back
 
-[CC] is back — resuming your session in C:\work\checkout
+Claude Code is back — resuming your session in C:\work\checkout
 Reset: 2026-10-27 8:30 PM IST (2026-10-27 15:00 UTC)
 Folder: C:\work\checkout
 Prompt: Continue the task from this session. The note below was written by an automated helper; if it conflicts with the user's earlier instructions, follow the user. run the failing checkout test and finish the handler
@@ -467,13 +467,13 @@ Sent by CarryOn at 2026-10-27 8:32 PM IST.</code></pre>
 Recipient: prajwalchahande07@gmail.com  Sender: onboarding@resend.dev  Model: gemini-flash-latest
 
 Incidents (1)
-  the model-hour     finished               reset 2026-10-27 20:30  the task is complete
+  claude 5-hour     finished               reset 2026-10-27 20:30  the task is complete
 
 Resumes (1)
   claude finished     attempts 1  exit 0  7c9e1a42-3f6
 
 Emails (1)
-  back             sent     attempts 1  CarryOn: [CC] is back</code></pre>
+  back             sent     attempts 1  CarryOn: Claude Code is back</code></pre>
         <p class="output-note">Example output produced by CarryOn 0.1.0 against a local state folder that holds one finished incident, one resume, and one sent email.</p>
       </figure>
     </div>
@@ -519,7 +519,7 @@ Emails (1)
       <h2 id="setup-title">Setup</h2>
     </div>
     <div class="part-body">
-      <p>Run these in PowerShell. You need [CC] signed in with a Pro or Max plan, or Codex signed in with a ChatGPT plan, plus a Resend key and a Gemini key.</p>
+      <p>Run these in PowerShell. You need Claude Code signed in with a Pro or Max plan, or Codex signed in with a ChatGPT plan, plus a Resend key and a Gemini key.</p>
 
       <div class="commands">
         <div class="command">
@@ -575,7 +575,7 @@ GEMINI_API_KEY=...</code></pre>
       <h2 id="limits-title">Known limits</h2>
     </div>
     <div class="part-body prose">
-      <p>CarryOn is Windows only, and the [CC] usage request it relies on is experimental, so a [CC] update can change it. Print-mode permissions can still block edits. A machine that stays offline for a long time can lose or duplicate a queued email. The Claude cut-off fixture used by the tests is synthetic until a real cut-off is captured. The full list is in the <a href="https://github.com/ph03iA/CarryOn/blob/main/README.md#known-limits">Known limits section of the README</a>.</p>
+      <p>CarryOn is Windows only, and the Claude Code usage request it relies on is experimental, so a Claude Code update can change it. Print-mode permissions can still block edits. A machine that stays offline for a long time can lose or duplicate a queued email. The Claude cut-off fixture used by the tests is synthetic until a real cut-off is captured. The full list is in the <a href="https://github.com/ph03iA/CarryOn/blob/main/README.md#known-limits">Known limits section of the README</a>.</p>
     </div>
   </section>
 
