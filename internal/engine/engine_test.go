@@ -750,3 +750,17 @@ func TestUnconfirmedResetSendsNothingUntil24Hours(t *testing.T) {
 		t.Fatalf("unexpected expiry email: %s\n%s", h.sender.sent[0].Subject, h.sender.sent[0].Body)
 	}
 }
+
+func TestEnqueueUsesEngineClock(t *testing.T) {
+	h := newHarness(t)
+	engineNow := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	h.engine.Now = func() time.Time { return engineNow }
+	if err := h.engine.enqueue(context.Background(), "clock:test", mail.Event{
+		Kind: mail.KindBack, Provider: "claude", Summary: "nothing to resume",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.db.ClaimEmail(context.Background(), engineNow, time.Minute); err != nil {
+		t.Fatalf("email stamped with the real clock is not due: %v", err)
+	}
+}

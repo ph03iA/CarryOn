@@ -192,7 +192,7 @@ func (e *Engine) enqueue(ctx context.Context, eventKey string, event mail.Event)
 	subject, body := mail.Render(event)
 	created, err := e.DB.EnqueueEmail(ctx, store.Email{
 		EventKey: eventKey, Kind: event.Kind, Subject: subject, Body: body,
-		Simulated: event.Simulated,
+		Simulated: event.Simulated, NextAttempt: e.now(),
 	})
 	if err != nil {
 		return err
