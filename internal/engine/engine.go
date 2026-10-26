@@ -123,6 +123,17 @@ func (e *Engine) saveSnapshot(ctx context.Context, snapshot quota.Snapshot) erro
 	})
 }
 
+// incidentFor builds the incident for an exhausted window. It starts in the
+// awaiting-reset state so a crash during the session scan cannot strand it.
+func incidentFor(snapshot quota.Snapshot, window quota.Window) store.Incident {
+	return store.Incident{
+		Provider: snapshot.Provider, AccountID: snapshot.AccountID,
+		WindowID: window.ID, WindowLabel: window.Label,
+		UsedPercent: window.UsedPercent, ResetAt: window.ResetsAt,
+		WindowDuration: window.Duration, State: store.IncidentAwaitingReset,
+	}
+}
+
 // recordExhausted creates one incident per exhausted window.
 func (e *Engine) recordExhausted(ctx context.Context, snapshot quota.Snapshot) []error {
 	var problems []error
@@ -130,12 +141,7 @@ func (e *Engine) recordExhausted(ctx context.Context, snapshot quota.Snapshot) [
 		if window.UsedPercent < 100 {
 			continue
 		}
-		incident := store.Incident{
-			Provider: snapshot.Provider, AccountID: snapshot.AccountID,
-			WindowID: window.ID, WindowLabel: window.Label,
-			UsedPercent: window.UsedPercent, ResetAt: window.ResetsAt,
-			WindowDuration: window.Duration,
-		}
+		incident := incidentFor(snapshot, window)
 		created, err := e.DB.CreateIncident(ctx, &incident)
 		if err != nil {
 			problems = append(problems, err)

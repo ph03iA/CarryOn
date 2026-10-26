@@ -840,3 +840,26 @@ func TestDeliverOutboxReleasesStaleLease(t *testing.T) {
 		t.Fatalf("stale lease was not released and delivered: %v", h.subjects())
 	}
 }
+
+func TestIncidentWithoutAnnounceIsHandledAtReset(t *testing.T) {
+	h := newHarness(t)
+	incident := incidentFor(h.provider.snapshot, h.provider.snapshot.Windows[0])
+	if incident.State != store.IncidentAwaitingReset {
+		t.Fatalf("incident must start awaiting reset, got %q", incident.State)
+	}
+	if _, err := h.db.CreateIncident(context.Background(), &incident); err != nil {
+		t.Fatal(err)
+	}
+
+	// The announce step never ran, so no session is recorded. The reset-time
+	// search must still find it.
+	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
+	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
+	h.step(t)
+
+	if h.runner.calls != 1 {
+		t.Fatalf("expected the reset-time search to resume, got %d runs", h.runner.calls)
+	}
+}
