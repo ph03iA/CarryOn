@@ -152,7 +152,8 @@ func (e *Engine) decideAndResume(ctx context.Context, incident store.Incident, f
 	result, err := e.decide(ctx, decision.Request{
 		Stage: "pre", Provider: incident.Provider, Cwd: found.Cwd,
 		SessionID: found.ID, LimitLabel: incident.WindowLabel, ResetAt: incident.ResetAt,
-		Transcript: transcript, TailChars: e.Config.TailChars, PromptMax: e.Config.PromptChars,
+		Attempts: e.attempts(ctx, incident), Transcript: transcript,
+		TailChars: e.Config.TailChars, PromptMax: e.Config.PromptChars,
 	})
 	if err != nil {
 		return e.blockOnDecision(ctx, incident, found, "pre", err)
@@ -240,17 +241,18 @@ func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, fou
 // postDecision asks Gemini what to do after a run.
 func (e *Engine) postDecision(ctx context.Context, incident store.Incident, found session.Session) (decision.Result, error) {
 	outcome := e.lastOutcome
+	record, _ := e.DB.ResumeForIncident(ctx, incident.Provider, found.ID, incident.ID)
 	summary := buildRunSummary(outcome)
 	result, err := e.decide(ctx, decision.Request{
 		Stage: "post", Provider: incident.Provider, Cwd: found.Cwd,
 		SessionID: found.ID, LimitLabel: incident.WindowLabel, ResetAt: incident.ResetAt,
+		Attempts:   record.Attempts,
 		Transcript: e.Scanner.Transcript(found, e.Config.TailChars),
 		RunSummary: summary, TailChars: e.Config.TailChars, PromptMax: e.Config.PromptChars,
 	})
 	if err != nil {
 		return decision.Result{}, err
 	}
-	record, _ := e.DB.ResumeForIncident(ctx, incident.Provider, found.ID, incident.ID)
 	if err := e.recordDecision(ctx, incident, record.ID, "post", result); err != nil {
 		return decision.Result{}, err
 	}
@@ -381,4 +383,13 @@ func (e *Engine) resumeAfterCrash(ctx context.Context, incident store.Incident, 
 		return e.resumeLoop(ctx, incident, found, next)
 	}
 	return e.closeIncident(ctx, incident, store.IncidentFinished, next.Reason)
+}
+
+// attempts reports how many resumes this incident has already used.
+func (e *Engine) attempts(ctx context.Context, incident store.Incident) int {
+	record, err := e.DB.ResumeForIncident(ctx, incident.Provider, incident.SessionID, incident.ID)
+	if err != nil {
+		return 0
+	}
+	return record.Attempts
 }

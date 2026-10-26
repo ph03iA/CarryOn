@@ -36,12 +36,14 @@ func (f *fakeProvider) Read(context.Context) (quota.Snapshot, error) {
 type fakeDecider struct {
 	results []decision.Result
 	errs    []error
-	calls   int
-	last    decision.Request
+	calls    int
+	last     decision.Request
+	requests []decision.Request
 }
 
 func (f *fakeDecider) Decide(_ context.Context, request decision.Request) (decision.Result, error) {
 	f.last = request
+	f.requests = append(f.requests, request)
 	index := f.calls
 	f.calls++
 	if index < len(f.errs) && f.errs[index] != nil {
@@ -629,4 +631,26 @@ func TestDecideIsBounded(t *testing.T) {
 	if elapsed := time.Since(started); elapsed > 2*time.Second {
 		t.Fatalf("decide ignored its timeout for %s", elapsed)
 	}
+}
+
+func TestDecisionCarriesAttemptCount(t *testing.T) {
+	h := newHarness(t)
+	h.decider.results = []decision.Result{
+		{Action: decision.ActionResume, Reason: "start", Prompt: "first"},
+		{Action: decision.ActionResumeAgain, Reason: "more", Prompt: "second"},
+		{Action: decision.ActionDone, Reason: "finished"},
+	}
+	h.step(t)
+	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
+	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
+	h.step(t)
+
+	for _, request := range h.decider.requests {
+		if request.Attempts > 0 {
+			return
+		}
+	}
+	t.Fatalf("no decision carried the attempt count: %+v", h.decider.requests)
 }
