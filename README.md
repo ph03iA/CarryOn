@@ -1,5 +1,7 @@
 # CarryOn
 
+[Read the manual](https://ph03iA.github.io/CarryOn/)
+
 CarryOn keeps your Claude Code and Codex work going through usage limits. It runs in the background on Windows, checks plan usage every minute without spending any, waits for a confirmed reset, asks Gemini whether continuing is worthwhile, and resumes the session by ID. It emails you when a limit comes back and when a resumed run finishes — never when a limit runs out.
 
 It never sends a prompt while checking usage. It never reads Claude or Codex auth files.

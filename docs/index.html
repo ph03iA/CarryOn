@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CarryOn: a manual for resuming work through usage limits</title>
+<meta name="description" content="CarryOn is a local Windows agent that watches [CC] and Codex usage, waits for a confirmed reset, asks Gemini whether to continue, and resumes the session by ID.">
+<meta name="theme-color" content="#f3efe4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1a17" media="(prefers-color-scheme: dark)">
+<style>
+@font-face {
+  font-family: "Manrope";
+  src: url("fonts/manrope.ttf") format("truetype");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("fonts/instrument-serif.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light dark;
+  --paper: #f3efe4;
+  --panel: #eae3d3;
+  --ink: #211e1a;
+  --muted: #5c564b;
+  --rule: #cabfa9;
+  --accent: #8a3f2b;
+  --serif: "Instrument Serif", Georgia, "Times New Roman", serif;
+  --sans: "Manrope", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "Cascadia Mono", Consolas, "SF Mono", "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1c1a17;
+    --panel: #25221e;
+    --ink: #ede6d7;
+    --muted: #b8ae9b;
+    --rule: #3e3932;
+    --accent: #d18f6c;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--paper); }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1, h2, h3, p, ul, ol, dl, dd, figure, pre { margin: 0; }
+
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+a:hover { color: var(--ink); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+code, pre { font-family: var(--mono); }
+code { font-size: .9em; }
+pre code { font-size: inherit; }
+:not(pre) > code { padding: 1px 5px; background: var(--panel); }
+
+.wrap { width: min(100% - 40px, 960px); margin-inline: auto; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -48px;
+  padding: 10px 14px;
+  background: var(--ink);
+  color: var(--paper);
+  text-decoration: none;
+}
+.skip:focus { top: 12px; }
+
+/* Masthead */
+
+.masthead { border-bottom: 1px solid var(--rule); }
+
+.masthead .wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px 28px;
+  padding: 26px 0 20px;
+}
+
+.wordmark {
+  font-family: var(--serif);
+  font-size: 2.1rem;
+  line-height: 1;
+}
+
+.edition {
+  font-size: .72rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.masthead nav { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.masthead nav a {
+  color: var(--muted);
+  font-size: .78rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.masthead nav a:hover { color: var(--accent); text-decoration: underline; }
+
+/* Hero */
+
+.hero { padding: 72px 0 56px; border-bottom: 1px solid var(--rule); }
+
+.kicker {
+  font-size: .74rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+h1 {
+  margin-top: 18px;
+  max-width: 15em;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(2.5rem, 6.6vw, 4.4rem);
+  line-height: 1.02;
+  letter-spacing: -.01em;
+}
+
+.lede {
+  margin-top: 26px;
+  max-width: 34em;
+  font-size: 1.16rem;
+  color: var(--ink);
+}
+
+.hero-meta {
+  margin-top: 28px;
+  font-size: .82rem;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
+
+/* Sections */
+
+.part { padding: 52px 0; border-bottom: 1px solid var(--rule); }
+
+.part-head { margin-bottom: 26px; }
+
+.part-no {
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  color: var(--accent);
+}
+
+h2 {
+  margin-top: 6px;
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(1.8rem, 3.6vw, 2.5rem);
+  line-height: 1.12;
+}
+
+h3 {
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.prose p { max-width: 40em; }
+.prose p + p { margin-top: 14px; }
+
+.part-body { max-width: 44em; }
+.part-body > * + * { margin-top: 18px; }
+
+/* Numbered steps */
+
+.steps { padding: 0; list-style: none; counter-reset: step; max-width: 44em; }
+
+.steps li {
+  display: grid;
+  grid-template-columns: 2.6em 1fr;
+  gap: 16px;
+  padding: 15px 0;
+  border-top: 1px solid var(--rule);
+}
+.steps li::before {
+  counter-increment: step;
+  content: counter(step, decimal-leading-zero);
+  font-family: var(--serif);
+  font-size: 1.25rem;
+  line-height: 1.45;
+  color: var(--accent);
+}
+.steps strong { font-weight: 700; }
+
+/* Verdicts */
+
+.verdicts { max-width: 44em; }
+.verdicts > div { padding: 18px 0; border-top: 1px solid var(--rule); }
+.verdicts dt { font-family: var(--serif); font-size: 1.45rem; line-height: 1.25; }
+.verdicts dd { margin-top: 6px; color: var(--muted); }
+.verdicts .example { margin-top: 10px; color: var(--ink); }
+.verdicts .example::before {
+  content: "Example.";
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* Output */
+
+figure { margin: 0; }
+figcaption {
+  margin-bottom: 10px;
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+pre {
+  padding: 18px 20px;
+  overflow-x: auto;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  font-size: .8rem;
+  line-height: 1.6;
+}
+pre code { white-space: pre; }
+.output-note { margin-top: 8px; font-size: .85rem; color: var(--muted); }
+
+/* Demo slot */
+
+.demo-head { display: flex; align-items: baseline; gap: 14px; }
+.tag {
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 2px 8px;
+}
+.demo-frame {
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  aspect-ratio: 16 / 9;
+  padding: 30px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+}
+.demo-frame p { max-width: 32em; }
+.demo-title { font-family: var(--serif); font-size: 1.5rem; }
+.demo-note { font-size: .88rem; color: var(--muted); }
+
+/* Plain lists */
+
+.plain { padding-left: 1.15em; list-style: square; max-width: 42em; }
+.plain li + li { margin-top: 9px; }
+.plain li::marker { color: var(--accent); }
+
+/* Commands */
+
+.commands { max-width: 46em; }
+
+.command { padding: 20px 0; border-top: 1px solid var(--rule); }
+
+.command-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-bottom: 10px;
+}
+.command-label {
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.copy {
+  font: inherit;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--rule);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.copy:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Two column text blocks */
+
+.columns { display: grid; grid-template-columns: 1fr; gap: 30px; }
+@media (min-width: 780px) { .columns { grid-template-columns: 1fr 1fr; } }
+.columns > div { border-top: 1px solid var(--rule); padding-top: 16px; }
+.columns h3 { margin-bottom: 8px; }
+.columns p { max-width: 34em; }
+.columns p + p { margin-top: 12px; }
+
+/* Footer */
+
+footer { padding: 36px 0 64px; color: var(--muted); font-size: .85rem; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; }
+footer a { color: var(--ink); }
+footer .colophon { flex: 1 1 100%; }
+
+@media print {
+  .masthead nav, .copy, .skip { display: none; }
+  body { font-size: 11pt; }
+  pre { white-space: pre-wrap; word-break: break-word; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="wrap">
+    <p class="wordmark">CarryOn</p>
+    <p class="edition">A local Windows agent</p>
+    <nav aria-label="Sections">
+      <a href="#works">How it works</a>
+      <a href="#decides">Decisions</a>
+      <a href="#output">Output</a>
+      <a href="#demo">Demo</a>
+      <a href="#safety">Safety</a>
+      <a href="#setup">Setup</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#terms">Terms</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="hero wrap" aria-labelledby="title">
+    <p class="kicker">Usage limits, handled locally</p>
+    <h1 id="title">Keep your work going when the limit runs out</h1>
+    <p class="lede">CarryOn is a small Windows program that watches your [CC] and Codex plan usage every minute without sending a prompt. When a limit runs out it records the incident, waits for the reset, asks Gemini whether the cut-off session is worth continuing, and resumes that session by its ID. You get an email when the limit comes back and when the resumed run finishes.</p>
+    <p class="hero-meta">Windows 10 or 11. Go 1.26 or newer. Everything runs on your own machine.</p>
+  </section>
+
+  <section class="part wrap" id="what" aria-labelledby="what-title">
+    <div class="part-head">
+      <p class="part-no">Part one</p>
+      <h2 id="what-title">What CarryOn does</h2>
+    </div>
+    <div class="part-body prose">
+      <p>CarryOn reads plan usage from the tools you already use, with no prompt and no cost. A window that reaches 100 percent becomes one recorded incident, and the session that the limit cut off is identified from the local session logs. When the limit resets, CarryOn confirms the reset with a fresh reading, asks Gemini for a single decision, and, if the decision is to continue, runs the provider's own resume command against that session ID in the session's own folder. Every step is written to a local SQLite database, every decision is logged with its reason, and the two events worth knowing about, the limit coming back and a resumed run finishing, arrive by email.</p>
+    </div>
+  </section>
+
+  <section class="part wrap" id="works" aria-labelledby="works-title">
+    <div class="part-head">
+      <p class="part-no">Part two</p>
+      <h2 id="works-title">How it works</h2>
+    </div>
+    <div class="part-body">
+      <ol class="steps">
+        <li><p><strong>The limit hits 100 percent.</strong> CarryOn records one incident for that provider, window, and reset time, and notes the session log that the limit cut off. No email is sent when a limit runs out.</p></li>
+        <li><p><strong>The reset is confirmed with a fresh reading.</strong> The reset counts only when a new reading is taken after the reset time, is under two minutes old, is for the same account, and shows no window still at 100 percent.</p></li>
+        <li><p><strong>Gemini decides.</strong> The tail of the cut-off session, the folder, the limit, and the reset time go to Gemini, which returns one decision: resume, skip because the task looks done, or skip because the agent looked stuck.</p></li>
+        <li><p><strong>The back email goes out.</strong> One email leads with the provider being back and says what CarryOn did, for example resuming your session in a folder, nothing to resume, or skipped with a reason.</p></li>
+        <li><p><strong>The session resumes by ID.</strong> The agent runs in the session's folder against that session's ID, so it continues the same conversation rather than the newest one in the folder.</p></li>
+        <li><p><strong>The finish email reports the result.</strong> When the resumed run ends, a second email carries the post-run decision, the agent's last message, and the files it changed.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="part wrap" id="decides" aria-labelledby="decides-title">
+    <div class="part-head">
+      <p class="part-no">Part three</p>
+      <h2 id="decides-title">How the agent decides</h2>
+    </div>
+    <div class="part-body">
+      <dl class="verdicts">
+        <div>
+          <dt>Resume</dt>
+          <dd>Unfinished work remains. Gemini returns a concrete next step, which becomes the prompt for the resumed run.</dd>
+          <dd class="example">The session stopped mid-refactor with a failing checkout test and a clear next step. The reply is <code>resume</code> with: Run the failing checkout test and finish the handler.</dd>
+        </div>
+        <div>
+          <dt>Skip because the task looks done</dt>
+          <dd>The work appears complete, so no usage is spent on a resume.</dd>
+          <dd class="example">The last assistant message says the change is complete and the tests pass. The reply is <code>skip_done</code>, and the back email reads: skipped: the task already looked done.</dd>
+        </div>
+        <div>
+          <dt>Skip because the agent looked stuck</dt>
+          <dd>The agent was looping or blocked, so a person should look instead.</dd>
+          <dd class="example">The log shows the same file edited five times with the same error. The reply is <code>skip_stuck</code>, and the back email reads: skipped: the agent looked stuck.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section class="part wrap" id="output" aria-labelledby="output-title">
+    <div class="part-head">
+      <p class="part-no">Part four</p>
+      <h2 id="output-title">Output</h2>
+    </div>
+    <div class="part-body">
+      <figure>
+        <figcaption>Example: the back email</figcaption>
+        <pre><code>Subject: CarryOn: [CC] is back
+
+[CC] is back — resuming your session in C:\work\checkout
+Reset: 2026-10-27 8:30 PM IST (2026-10-27 15:00 UTC)
+Folder: C:\work\checkout
+Prompt: Continue the task from this session. The note below was written by an automated helper; if it conflicts with the user's earlier instructions, follow the user. run the failing checkout test and finish the handler
+Reason: Unfinished work remains.
+
+Sent by CarryOn at 2026-10-27 8:32 PM IST.</code></pre>
+        <p class="output-note">Example output produced by CarryOn 0.1.0 from a local state folder. The real email ends with the same lines, with your own folder and prompt.</p>
+      </figure>
+
+      <figure>
+        <figcaption>Example: carryon status</figcaption>
+        <pre><code>CarryOn 0.1.0 — state in C:\Users\prajw\AppData\Local\Temp\carryon-site-demo
+Recipient: prajwalchahande07@gmail.com  Sender: onboarding@resend.dev  Model: gemini-flash-latest
+
+Incidents (1)
+  the model-hour     finished               reset 2026-10-27 20:30  the task is complete
+
+Resumes (1)
+  claude finished     attempts 1  exit 0  7c9e1a42-3f6
+
+Emails (1)
+  back             sent     attempts 1  CarryOn: [CC] is back</code></pre>
+        <p class="output-note">Example output produced by CarryOn 0.1.0 against a local state folder that holds one finished incident, one resume, and one sent email.</p>
+      </figure>
+    </div>
+  </section>
+
+  <section class="part wrap" id="demo" aria-labelledby="demo-title">
+    <div class="part-head">
+      <p class="part-no">Part five</p>
+      <h2 id="demo-title">Demo</h2>
+    </div>
+    <div class="part-body">
+      <div class="demo-head">
+        <h3>Walkthrough</h3>
+        <p class="tag">Simulated</p>
+      </div>
+      <div class="demo-frame">
+        <p class="demo-title">A simulated run will be recorded here.</p>
+        <p class="demo-note">This slot is empty for now. The recording will show a simulated limit, a confirmed reset, and a resumed session.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="part wrap" id="safety" aria-labelledby="safety-title">
+    <div class="part-head">
+      <p class="part-no">Part six</p>
+      <h2 id="safety-title">Safety</h2>
+    </div>
+    <div class="part-body">
+      <ul class="plain">
+        <li>A reset counts only after a fresh reading taken after the reset time, under two minutes old, for the same account, with no window still at 100 percent.</li>
+        <li>Resumes use the session ID, and CarryOn skips a session that was already continued after the cut-off.</li>
+        <li>Each limit hit allows at most two resumes for its cut-off session.</li>
+        <li>Claude, Codex, and the usage probes run inside a Windows job object with kill on close, so a CarryOn crash kills the agent and its children.</li>
+        <li>Both API keys are removed from every Claude and Codex process CarryOn starts.</li>
+        <li>Secrets are redacted from session text before it goes to Gemini, and email bodies are redacted again before Resend.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="part wrap" id="setup" aria-labelledby="setup-title">
+    <div class="part-head">
+      <p class="part-no">Part seven</p>
+      <h2 id="setup-title">Setup</h2>
+    </div>
+    <div class="part-body">
+      <p>Run these in PowerShell. You need [CC] signed in with a Pro or Max plan, or Codex signed in with a ChatGPT plan, plus a Resend key and a Gemini key.</p>
+
+      <div class="commands">
+        <div class="command">
+          <div class="command-head">
+            <p class="command-label">Build</p>
+            <button class="copy" type="button" data-target="cmd-build">Copy</button>
+          </div>
+          <pre><code id="cmd-build">$env:GOARCH = "amd64"
+go build -trimpath -o carryon.exe ./cmd/carryon</code></pre>
+        </div>
+
+        <div class="command">
+          <div class="command-head">
+            <p class="command-label">Create the state folder and config</p>
+            <button class="copy" type="button" data-target="cmd-init">Copy</button>
+          </div>
+          <pre><code id="cmd-init">.\carryon.exe init</code></pre>
+        </div>
+
+        <div class="command">
+          <div class="command-head">
+            <p class="command-label">Put the keys in %APPDATA%\CarryOn\.env</p>
+            <button class="copy" type="button" data-target="cmd-env">Copy</button>
+          </div>
+          <pre><code id="cmd-env">RESEND_API_KEY=re_...
+GEMINI_API_KEY=...</code></pre>
+        </div>
+
+        <div class="command">
+          <div class="command-head">
+            <p class="command-label">Run it in the foreground first</p>
+            <button class="copy" type="button" data-target="cmd-watch">Copy</button>
+          </div>
+          <pre><code id="cmd-watch">.\carryon.exe watch</code></pre>
+        </div>
+
+        <div class="command">
+          <div class="command-head">
+            <p class="command-label">Install the logon task</p>
+            <button class="copy" type="button" data-target="cmd-service">Copy</button>
+          </div>
+          <pre><code id="cmd-service">.\carryon.exe service install</code></pre>
+        </div>
+      </div>
+
+      <p class="output-note">The full README has the rest, including the config fields, the troubleshooting notes, and the known limits.</p>
+    </div>
+  </section>
+
+  <section class="part wrap" id="limits" aria-labelledby="limits-title">
+    <div class="part-head">
+      <p class="part-no">Part eight</p>
+      <h2 id="limits-title">Known limits</h2>
+    </div>
+    <div class="part-body prose">
+      <p>CarryOn is Windows only, and the [CC] usage request it relies on is experimental, so a [CC] update can change it. Print-mode permissions can still block edits. A machine that stays offline for a long time can lose or duplicate a queued email. The Claude cut-off fixture used by the tests is synthetic until a real cut-off is captured. The full list is in the <a href="https://github.com/ph03iA/CarryOn/blob/main/README.md#known-limits">Known limits section of the README</a>.</p>
+    </div>
+  </section>
+
+  <section class="part wrap" id="privacy" aria-labelledby="privacy-title">
+    <div class="part-head">
+      <p class="part-no">Part nine</p>
+      <h2 id="privacy-title">Privacy</h2>
+    </div>
+    <div class="part-body">
+      <div class="columns">
+        <div>
+          <h3>Sent to Google</h3>
+          <p>Gemini receives the tail of the cut-off session, about the last 4,000 tokens, plus the folder, the session ID, the limit and reset time, and the attempt count. After a run it receives the exit status, the diff stat, a bounded diff excerpt, test output when tests ran, and the last message.</p>
+          <p>Credential-shaped text is redacted before sending, and the session text is wrapped in delimiters that tell the model to treat it as data.</p>
+        </div>
+        <div>
+          <h3>Sent to Resend</h3>
+          <p>Resend receives the recipient, the sender, the subject, and the body of each email. The body holds the limit and reset time, the session ID and folder, the decision and its reason, the resume prompt, the agent's last message, the files that changed, and test output.</p>
+          <p>Email bodies are redacted again before they are sent.</p>
+        </div>
+        <div>
+          <h3>Stays on this machine</h3>
+          <p>Usage readings, incidents, resume records, decisions, the email outbox, the session logs, the configuration, and both API keys stay in %APPDATA%\CarryOn. CarryOn makes no other network calls.</p>
+          <p>It never opens <code>~/.claude/.credentials.json</code>, <code>~/.codex/auth.json</code>, or a keychain entry, and it never prints a token.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="part wrap" id="terms" aria-labelledby="terms-title">
+    <div class="part-head">
+      <p class="part-no">Part ten</p>
+      <h2 id="terms-title">Terms</h2>
+    </div>
+    <div class="part-body prose">
+      <p>CarryOn is released under the MIT License. It runs on your own computer, and you are responsible for the API keys you configure and for the agent runs it starts. Read the <a href="https://github.com/ph03iA/CarryOn/blob/main/LICENSE">LICENSE file</a> for the full terms.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>CarryOn 0.1.0. Source and issues on <a href="https://github.com/ph03iA/CarryOn">GitHub</a>.</p>
+    <p><a href="https://github.com/ph03iA/CarryOn/blob/main/README.md">README</a> &middot; <a href="https://github.com/ph03iA/CarryOn/blob/main/LICENSE">LICENSE</a></p>
+    <p class="colophon">This page is static. It loads no trackers and no third-party scripts.</p>
+  </div>
+</footer>
+
+<p class="sr-only" id="copy-status" role="status" aria-live="polite"></p>
+
+<script>
+  const status = document.getElementById("copy-status");
+
+  document.querySelectorAll("button.copy").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const code = document.getElementById(button.dataset.target);
+      if (!code) return;
+      try {
+        await navigator.clipboard.writeText(code.textContent.trim());
+        button.textContent = "Copied";
+        status.textContent = "Copied to your clipboard";
+        window.setTimeout(() => {
+          button.textContent = "Copy";
+          status.textContent = "";
+        }, 2000);
+      } catch (error) {
+        status.textContent = "Could not copy automatically. Select the command and copy it by hand.";
+      }
+    });
+  });
+</script>
+</body>
+</html>
