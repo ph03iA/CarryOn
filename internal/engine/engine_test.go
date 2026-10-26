@@ -863,3 +863,23 @@ func TestIncidentWithoutAnnounceIsHandledAtReset(t *testing.T) {
 		t.Fatalf("expected the reset-time search to resume, got %d runs", h.runner.calls)
 	}
 }
+
+func TestSimulateSendsSkipEmailBeforeReturning(t *testing.T) {
+	h := newHarness(t)
+	h.decider.results = []decision.Result{{Action: decision.ActionSkipDone, Reason: "the task was already complete"}}
+	if err := h.engine.Simulate(context.Background(), "", fixtureSessionID); err != nil {
+		t.Fatalf("simulate: %v", err)
+	}
+	if len(h.sender.sent) != 1 {
+		t.Fatalf("want one back email before Simulate returns, got %v", h.subjects())
+	}
+	if !strings.Contains(h.sender.sent[0].Body, "skipped: the task already looked done") {
+		t.Fatalf("unexpected email:\n%s", h.sender.sent[0].Body)
+	}
+	if !strings.HasPrefix(h.sender.sent[0].Subject, "[SIMULATED] ") {
+		t.Fatalf("email not labelled: %s", h.sender.sent[0].Subject)
+	}
+	if h.runner.calls != 0 {
+		t.Fatalf("skip_done must not run the agent, got %d", h.runner.calls)
+	}
+}

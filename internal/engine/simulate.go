@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -38,7 +39,12 @@ func (e *Engine) Simulate(ctx context.Context, provider, sessionID string) error
 		return err
 	}
 	e.logf("SIMULATED limit for %s session %s", found.Provider, found.ID)
-	return e.runCycle(ctx, incident)
+	runErr := e.runCycle(ctx, incident)
+	// Flush whatever the cycle queued, including skip and blocked emails.
+	if flushErr := e.deliverOutbox(ctx); flushErr != nil {
+		return errors.Join(runErr, flushErr)
+	}
+	return runErr
 }
 
 // locateSession finds a session by id, trying both providers when unspecified.
