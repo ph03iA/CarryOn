@@ -68,6 +68,7 @@ a {
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
+  overflow-wrap: anywhere;
 }
 a:hover { color: var(--ink); }
 
@@ -111,7 +112,6 @@ pre code { font-size: inherit; }
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  justify-content: space-between;
   gap: 10px 28px;
   padding: 26px 0 20px;
 }
@@ -129,7 +129,8 @@ pre code { font-size: inherit; }
   color: var(--muted);
 }
 
-.masthead nav { display: flex; flex-wrap: wrap; gap: 4px 20px; }
+.masthead nav { display: flex; flex-wrap: wrap; gap: 4px 20px; margin-left: auto; }
+@media (max-width: 700px) { .masthead nav { margin-left: 0; width: 100%; } }
 .masthead nav a {
   color: var(--muted);
   font-size: .78rem;
@@ -207,6 +208,7 @@ h3 {
 
 .part-body { max-width: 44em; }
 .part-body > * + * { margin-top: 18px; }
+#output .part-body { max-width: 56em; }
 
 /* Numbered steps */
 
@@ -339,7 +341,7 @@ pre code { white-space: pre; }
 /* Two column text blocks */
 
 .columns { display: grid; grid-template-columns: 1fr; gap: 30px; }
-@media (min-width: 780px) { .columns { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 780px) { .columns { grid-template-columns: 1fr 1fr; } .columns > div:last-child { grid-column: 1 / -1; } }
 .columns > div { border-top: 1px solid var(--rule); padding-top: 16px; }
 .columns h3 { margin-bottom: 8px; }
 .columns p { max-width: 34em; }
@@ -394,7 +396,7 @@ footer .colophon { flex: 1 1 100%; }
       <h2 id="what-title">What CarryOn does</h2>
     </div>
     <div class="part-body prose">
-      <p>CarryOn reads plan usage from the tools you already use, with no prompt and no cost. A window that reaches 100 percent becomes one recorded incident, and the session that the limit cut off is identified from the local session logs. When the limit resets, CarryOn confirms the reset with a fresh reading, asks Gemini for a single decision, and, if the decision is to continue, runs the provider's own resume command against that session ID in the session's own folder. Every step is written to a local SQLite database, every decision is logged with its reason, and the two events worth knowing about, the limit coming back and a resumed run finishing, arrive by email.</p>
+      <p>CarryOn reads plan usage from the tools you already use, with no prompt and no cost. A window that reaches 100 percent becomes one recorded incident, and the session that the limit cut off is identified from the local session logs. When the limit resets, CarryOn confirms the reset with a fresh reading, asks Gemini for a single decision, and, if the decision is to continue, runs the provider's own resume command against that session ID in the session's own folder. Incidents, resumes, decisions, and the email outbox are written to a local SQLite database, every decision is logged with its reason, and the two events worth knowing about, the limit coming back and a resumed run finishing, arrive by email.</p>
     </div>
   </section>
 
