@@ -201,3 +201,21 @@ func TestClaimResumeStartsTheRunInOneWrite(t *testing.T) {
 		t.Fatalf("claim should set started_at and decision: %+v", stored)
 	}
 }
+
+func TestOpenCreatesCurrentSchema(t *testing.T) {
+	db := testDB(t)
+	var version int
+	if err := db.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != schemaVersion {
+		t.Fatalf("want schema version %d, got %d", schemaVersion, version)
+	}
+	for _, column := range []string{"cut_off_offset", "window_duration"} {
+		var count int
+		err := db.db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('incidents') WHERE name=?`, column).Scan(&count)
+		if err != nil || count != 1 {
+			t.Fatalf("incidents.%s missing: count=%d err=%v", column, count, err)
+		}
+	}
+}
