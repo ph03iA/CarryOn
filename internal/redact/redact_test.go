@@ -46,3 +46,13 @@ func TestContainsSecretIsFalseForOrdinaryText(t *testing.T) {
 		t.Fatal("ordinary text flagged as a secret")
 	}
 }
+
+func TestTextRedactsSingleQuotedValue(t *testing.T) {
+	result := Text(`API_KEY='supersecretvalue'`)
+	if strings.Contains(result.Text, "supersecretvalue") {
+		t.Fatalf("single-quoted secret survived: %s", result.Text)
+	}
+	if !strings.Contains(result.Text, "[REDACTED]") {
+		t.Fatalf("missing redaction marker: %s", result.Text)
+	}
+}

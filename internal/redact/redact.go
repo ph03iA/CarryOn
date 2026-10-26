@@ -24,7 +24,7 @@ var patterns = []*regexp.Regexp{
 	regexp.MustCompile(`xox[baprs]-[A-Za-z0-9-]{10,}`),
 	regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/-]{16,}=*`),
 	regexp.MustCompile(`re_[A-Za-z0-9_]{20,}`),
-	regexp.MustCompile(`(?i)\b([A-Z0-9_]*(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD)["']?\s*[=:]\s*)("?)[^\s"']{8,}`),
+	regexp.MustCompile(`(?i)\b([A-Z0-9_]*(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD)["']?\s*[=:]\s*)(["']?)[^\s"']{8,}["']?`),
 }
 
 // Text replaces every credential-shaped span and reports the replacement count.
