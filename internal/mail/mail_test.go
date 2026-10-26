@@ -26,13 +26,13 @@ func TestResendSendsIdempotencyKeyAndBody(t *testing.T) {
 
 	sender := &Resend{APIKey: "re_test", BaseURL: server.URL, Client: server.Client()}
 	err := sender.Send(context.Background(), Message{
-		EventKey: "limit:abc", To: "me@example.com", From: "onboarding@resend.dev",
+		EventKey: "back:abc", To: "me@example.com", From: "onboarding@resend.dev",
 		Subject: "subject", Body: "body",
 	})
 	if err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if seenKey != "carryon-limit:abc" {
+	if seenKey != "carryon-back:abc" {
 		t.Fatalf("unexpected idempotency key: %q", seenKey)
 	}
 	if seenAuth != "Bearer re_test" {
@@ -104,34 +104,58 @@ func TestResendRequiresKey(t *testing.T) {
 	}
 }
 
-func TestRenderLimitHitUsesLocalTime(t *testing.T) {
+func TestRenderBackLeadsWithBack(t *testing.T) {
 	reset := time.Date(2026, 10, 26, 18, 0, 0, 0, time.UTC)
 	subject, body := Render(Event{
-		Kind: KindLimitHit, Provider: "claude", WindowLabel: "5-hour",
-		ResetAt: reset, SessionID: "abc", SessionCwd: `C:\work`,
-		Now: reset,
+		Kind: KindBack, Provider: "claude", Summary: `resuming your session in C:\work\demo`,
+		ResetAt: reset, SessionCwd: `C:\work\demo`, Now: reset,
 	})
-	if !strings.Contains(subject, "Claude Code 5-hour limit hit") {
+	if !strings.Contains(subject, "Claude Code is back") {
 		t.Fatalf("unexpected subject: %s", subject)
 	}
-	if !strings.Contains(body, "Resets:") || !strings.Contains(body, "UTC") {
-		t.Fatalf("reset time missing: %s", body)
+	if !strings.HasPrefix(body, `Claude Code is back — resuming your session in C:\work\demo`) {
+		t.Fatalf("body must lead with back:\n%s", body)
 	}
-	if !strings.Contains(body, `C:\work`) {
-		t.Fatalf("folder missing: %s", body)
+	if !strings.Contains(body, "Reset:") || !strings.Contains(body, "UTC") {
+		t.Fatalf("reset time missing:\n%s", body)
+	}
+}
+
+func TestRenderBackSkipSummary(t *testing.T) {
+	_, body := Render(Event{
+		Kind: KindBack, Provider: "codex", Summary: "skipped: the task already looked done",
+	})
+	if !strings.HasPrefix(body, "Codex is back — skipped: the task already looked done") {
+		t.Fatalf("unexpected body:\n%s", body)
+	}
+}
+
+func TestRenderNeedsYouExplainsTheWait(t *testing.T) {
+	subject, body := Render(Event{
+		Kind: KindNeedsYou, Provider: "codex", WindowLabel: "weekly",
+		ResetAt: time.Date(2026, 10, 26, 18, 0, 0, 0, time.UTC),
+	})
+	if !strings.Contains(subject, "needs you") {
+		t.Fatalf("unexpected subject: %s", subject)
+	}
+	if !strings.Contains(body, "24 hours") {
+		t.Fatalf("missing 24-hour reason:\n%s", body)
 	}
 }
 
 func TestRenderSimulatedIsLabelled(t *testing.T) {
 	subject, body := Render(Event{
-		Kind: KindResumeFinish, Provider: "codex", SessionID: "s", Action: "done",
-		Reason: "task complete", Simulated: true,
+		Kind: KindBack, Provider: "codex", Summary: "resuming your session in C:\\work",
+		Simulated: true,
 	})
 	if !strings.HasPrefix(subject, "[SIMULATED] ") {
 		t.Fatalf("subject not labelled: %s", subject)
 	}
 	if !strings.HasPrefix(body, "SIMULATED — no real usage limit was hit.") {
 		t.Fatalf("body not labelled: %s", body)
+	}
+	if !strings.Contains(body, "Codex is back") {
+		t.Fatalf("back line missing: %s", body)
 	}
 }
 

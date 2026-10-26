@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ph03iA/CarryOn/internal/mail"
 	"github.com/ph03iA/CarryOn/internal/session"
 	"github.com/ph03iA/CarryOn/internal/store"
 )
@@ -39,14 +38,6 @@ func (e *Engine) Simulate(ctx context.Context, provider, sessionID string) error
 		return err
 	}
 	e.logf("SIMULATED limit for %s session %s", found.Provider, found.ID)
-	if err := e.enqueue(ctx, "limit:"+incident.ID, mail.Event{
-		Kind: mail.KindLimitHit, Provider: found.Provider, WindowLabel: "simulated",
-		ResetAt: incident.ResetAt, SessionID: found.ID, SessionCwd: found.Cwd,
-		Simulated: true, Now: e.now(),
-	}); err != nil {
-		return err
-	}
-	_ = e.deliverOutbox(ctx)
 	return e.runCycle(ctx, incident)
 }
 

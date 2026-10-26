@@ -10,11 +10,9 @@ import (
 
 // Event kinds CarryOn emails.
 const (
-	KindLimitHit      = "limit_hit"
-	KindDecisionSkip  = "decision_skip"
-	KindDecisionBlock = "decision_block"
-	KindResumeStart   = "resume_start"
-	KindResumeFinish  = "resume_finish"
+	KindBack         = "back"
+	KindNeedsYou     = "needs_you"
+	KindResumeFinish = "resume_finish"
 )
 
 // Event is everything a template may render.
@@ -26,6 +24,7 @@ type Event struct {
 	SessionID   string
 	SessionCwd  string
 	Action      string
+	Summary     string
 	Reason      string
 	Prompt      string
 	ExitCode    int
@@ -55,14 +54,10 @@ func Render(event Event) (string, string) {
 func subjectFor(event Event) string {
 	provider := providerName(event.Provider)
 	switch event.Kind {
-	case KindLimitHit:
-		return fmt.Sprintf("%s %s limit hit — resets %s", provider, event.WindowLabel, localTime(event.ResetAt))
-	case KindDecisionSkip:
-		return fmt.Sprintf("CarryOn skipped the %s session", provider)
-	case KindDecisionBlock:
-		return fmt.Sprintf("CarryOn needs you: the %s session was blocked", provider)
-	case KindResumeStart:
-		return fmt.Sprintf("CarryOn resumed the %s session", provider)
+	case KindBack:
+		return fmt.Sprintf("CarryOn: %s is back", provider)
+	case KindNeedsYou:
+		return fmt.Sprintf("CarryOn needs you: %s reset was never confirmed", provider)
 	case KindResumeFinish:
 		return fmt.Sprintf("CarryOn finished the %s session", provider)
 	default:
@@ -71,23 +66,17 @@ func subjectFor(event Event) string {
 }
 
 func bodyFor(event Event, now time.Time) []string {
+	if event.Kind == KindBack {
+		return backBody(event)
+	}
 	lines := []string{fmt.Sprintf("%s (%s)", providerName(event.Provider), displaySession(event.SessionID))}
 	switch event.Kind {
-	case KindLimitHit:
+	case KindNeedsYou:
 		lines = append(lines,
 			fmt.Sprintf("Limit: %s", event.WindowLabel),
-			fmt.Sprintf("Resets: %s (%s)", localTime(event.ResetAt), utcTime(event.ResetAt)),
+			fmt.Sprintf("Reset: %s (%s)", localTime(event.ResetAt), utcTime(event.ResetAt)),
+			"The reset was not confirmed with a fresh reading within 24 hours, so CarryOn stopped waiting.",
 		)
-		if event.Reason != "" {
-			lines = append(lines, event.Reason)
-		}
-	case KindDecisionSkip, KindDecisionBlock:
-		lines = append(lines, fmt.Sprintf("Decision: %s", event.Action), "Reason: "+event.Reason)
-	case KindResumeStart:
-		lines = append(lines, "Decision: resume", "Reason: "+event.Reason)
-		if event.Prompt != "" {
-			lines = append(lines, "Prompt: "+event.Prompt)
-		}
 	case KindResumeFinish:
 		lines = append(lines, "Decision: "+event.Action, "Reason: "+event.Reason,
 			fmt.Sprintf("Exit status: %d", event.ExitCode))
@@ -114,6 +103,25 @@ func bodyFor(event Event, now time.Time) []string {
 	return lines
 }
 
+// backBody leads with the provider being back, then says what CarryOn did.
+func backBody(event Event) []string {
+	lines := []string{fmt.Sprintf("%s is back — %s", providerName(event.Provider), event.Summary)}
+	if !event.ResetAt.IsZero() {
+		lines = append(lines, "Reset: "+localTime(event.ResetAt)+" ("+utcTime(event.ResetAt)+")")
+	}
+	if event.SessionCwd != "" {
+		lines = append(lines, "Folder: "+event.SessionCwd)
+	}
+	if event.Prompt != "" {
+		lines = append(lines, "Prompt: "+event.Prompt)
+	}
+	if event.Reason != "" {
+		lines = append(lines, "Reason: "+event.Reason)
+	}
+	lines = append(lines, "", fmt.Sprintf("Sent by CarryOn at %s.", localTime(event.Now)))
+	return lines
+}
+
 func providerName(provider string) string {
 	switch provider {
 	case "claude":
@@ -125,6 +133,13 @@ func providerName(provider string) string {
 	default:
 		return provider
 	}
+}
+
+func displaySession(sessionID string) string {
+	if sessionID == "" {
+		return "no cut-off session found"
+	}
+	return sessionID
 }
 
 func localTime(value time.Time) string {
@@ -139,12 +154,4 @@ func utcTime(value time.Time) string {
 		return "unknown"
 	}
 	return value.UTC().Format("2006-01-02 15:04 UTC")
-}
-
-// displaySession names a session in email, or says none was found.
-func displaySession(sessionID string) string {
-	if sessionID == "" {
-		return "no cut-off session found"
-	}
-	return sessionID
 }

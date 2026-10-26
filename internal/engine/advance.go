@@ -30,6 +30,7 @@ func (e *Engine) advance(ctx context.Context) []error {
 			continue
 		}
 		if e.now().Sub(incident.ResetAt) > 24*time.Hour {
+			_ = e.sendNeedsYou(ctx, incident)
 			problems = append(problems, e.closeIncident(ctx, incident, store.IncidentBlocked,
 				"the reset was not confirmed within 24 hours"))
 			continue

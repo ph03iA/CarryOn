@@ -150,7 +150,8 @@ func (e *Engine) recordExhausted(ctx context.Context, snapshot quota.Snapshot) [
 	return problems
 }
 
-// announceIncident finds the cut-off session and emails the limit hit.
+// announceIncident finds the cut-off session and records it. It sends no email:
+// CarryOn only emails when the limit comes back.
 func (e *Engine) announceIncident(ctx context.Context, incident store.Incident) error {
 	update := store.IncidentUpdate{State: store.IncidentAwaitingReset}
 	found, ok := e.findCutOff(incident)
@@ -167,22 +168,12 @@ func (e *Engine) announceIncident(ctx context.Context, incident store.Incident) 
 		}); err != nil {
 			return err
 		}
+		e.logf("cut-off session for %s: %s in %s", incident.Provider, found.ID, found.Cwd)
 	} else {
-		update.Reason = "no cut-off session found"
+		update.Reason = "no cut-off session found yet"
+		e.logf("no cut-off session for %s yet; will search again at reset", incident.Provider)
 	}
-	if err := e.DB.UpdateIncident(ctx, incident.ID, update); err != nil {
-		return err
-	}
-	event := mail.Event{
-		Kind: mail.KindLimitHit, Provider: incident.Provider,
-		WindowLabel: incident.WindowLabel, ResetAt: incident.ResetAt,
-		SessionID: update.SessionID, SessionCwd: update.SessionCwd,
-		Simulated: incident.Simulated, Now: e.now(),
-	}
-	if !ok {
-		event.Reason = "CarryOn found no cut-off session yet and will search again when the limit resets."
-	}
-	return e.enqueue(ctx, "limit:"+incident.ID, event)
+	return e.DB.UpdateIncident(ctx, incident.ID, update)
 }
 
 // advance starts the next due resume, in the background unless synchronous.
@@ -344,4 +335,22 @@ func (e *Engine) attachCutOffSession(ctx context.Context, incident store.Inciden
 	}
 	e.logf("found cut-off session %s at reset", found.ID)
 	return incident, nil
+}
+
+// sendBack reports that the limit is back and what CarryOn did about it.
+func (e *Engine) sendBack(ctx context.Context, incident store.Incident, summary, prompt, reason string) error {
+	return e.enqueue(ctx, "back:"+incident.ID, mail.Event{
+		Kind: mail.KindBack, Provider: incident.Provider, Summary: summary,
+		ResetAt: incident.ResetAt, SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
+		Prompt: prompt, Reason: reason, Simulated: incident.Simulated, Now: e.now(),
+	})
+}
+
+// sendNeedsYou reports a reset that was never confirmed.
+func (e *Engine) sendNeedsYou(ctx context.Context, incident store.Incident) error {
+	return e.enqueue(ctx, "needsyou:"+incident.ID, mail.Event{
+		Kind: mail.KindNeedsYou, Provider: incident.Provider, WindowLabel: incident.WindowLabel,
+		ResetAt: incident.ResetAt, SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
+		Simulated: incident.Simulated, Now: e.now(),
+	})
 }

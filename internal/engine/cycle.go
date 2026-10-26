@@ -17,17 +17,6 @@ import (
 // prepareCycle confirms the reset and returns the session to resume. ok is
 // false when the reset is not confirmed yet, so another incident can be tried.
 func (e *Engine) prepareCycle(ctx context.Context, incident store.Incident) (store.Incident, session.Session, bool, error) {
-	if incident.SessionID == "" {
-		attached, err := e.attachCutOffSession(ctx, incident)
-		if err != nil {
-			return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
-		}
-		incident = attached
-	}
-	found, err := e.sessionFor(incident)
-	if err != nil {
-		return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
-	}
 	if !incident.Simulated {
 		confirmed, err := e.confirmReset(ctx, incident)
 		if err != nil {
@@ -39,12 +28,27 @@ func (e *Engine) prepareCycle(ctx context.Context, incident store.Incident) (sto
 			return incident, session.Session{}, false, nil
 		}
 	}
+	if incident.SessionID == "" {
+		attached, err := e.attachCutOffSession(ctx, incident)
+		if err != nil {
+			_ = e.sendBack(ctx, incident, "nothing to resume", "", err.Error())
+			return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
+		}
+		incident = attached
+	}
+	found, err := e.sessionFor(incident)
+	if err != nil {
+		_ = e.sendBack(ctx, incident, "nothing to resume", "", err.Error())
+		return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
+	}
 	if _, interrupted := e.interruptedResume(ctx, incident); !interrupted {
 		continued, err := e.Scanner.Continued(found)
 		if err != nil {
+			_ = e.sendBack(ctx, incident, "skipped: could not read the session log", "", err.Error())
 			return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentBlocked, "could not read the session log: "+err.Error())
 		}
 		if continued {
+			_ = e.sendBack(ctx, incident, "skipped: the session was already continued", "", "")
 			return incident, session.Session{}, false, e.skipContinued(ctx, incident, found)
 		}
 	}
@@ -129,18 +133,14 @@ func usageAllowed(snapshot quota.Snapshot) bool {
 	return snapshot.OrdinaryUsageAllowed != nil && *snapshot.OrdinaryUsageAllowed
 }
 
-// skipContinued reports that something else already continued the session.
+// skipContinued records that something else already continued the session.
 func (e *Engine) skipContinued(ctx context.Context, incident store.Incident, found session.Session) error {
 	reason := "the session was already continued after the cut-off, so CarryOn left it alone"
 	if err := e.DB.UpdateIncident(ctx, incident.ID, incidentUpdate(incident, store.IncidentSkipped, reason)); err != nil {
 		return err
 	}
 	e.logf("skipped %s session %s: %s", incident.Provider, found.ID, reason)
-	return e.enqueue(ctx, "decision:"+incident.ID, mail.Event{
-		Kind: mail.KindDecisionSkip, Provider: incident.Provider, Action: "skip",
-		Reason: reason, SessionID: found.ID, SessionCwd: found.Cwd,
-		Simulated: incident.Simulated, Now: e.now(),
-	})
+	return nil
 }
 
 // decideAndResume asks Gemini, then acts on its answer.
@@ -163,10 +163,15 @@ func (e *Engine) decideAndResume(ctx context.Context, incident store.Incident, f
 	}
 	switch result.Action {
 	case decision.ActionResume:
+		if err := e.sendBack(ctx, incident, "resuming your session in "+found.Cwd, decision.ResumePrompt(result.Prompt), result.Reason); err != nil {
+			return err
+		}
 		return e.resumeLoop(ctx, incident, found, result)
 	case decision.ActionSkipDone:
+		_ = e.sendBack(ctx, incident, "skipped: the task already looked done", "", result.Reason)
 		return e.closeIncident(ctx, incident, store.IncidentSkipped, result.Reason)
 	default:
+		_ = e.sendBack(ctx, incident, "skipped: the agent looked stuck", "", result.Reason)
 		return e.closeIncident(ctx, incident, store.IncidentBlocked, result.Reason)
 	}
 }
@@ -205,15 +210,7 @@ func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, fou
 		message := fmt.Sprintf("CarryOn already resumed this session %d time(s), so it stopped here", record.Attempts)
 		return true, e.closeIncident(ctx, incident, store.IncidentBlocked, message)
 	}
-	attempt := record.Attempts + 1
 	if err := e.DB.UpdateIncident(ctx, incident.ID, incidentUpdate(incident, store.IncidentResuming, reason)); err != nil {
-		return true, err
-	}
-	if err := e.enqueue(ctx, resumeKey(record.ID, "start", attempt), mail.Event{
-		Kind: mail.KindResumeStart, Provider: incident.Provider, Action: "resume",
-		Reason: reason, Prompt: prompt, SessionID: found.ID, SessionCwd: found.Cwd,
-		Simulated: incident.Simulated, Now: e.now(),
-	}); err != nil {
 		return true, err
 	}
 	_ = e.deliverOutbox(ctx)
@@ -286,7 +283,7 @@ func buildRunSummary(outcome resume.Outcome) string {
 	return strings.Join(parts, "\n\n")
 }
 
-// blockOnDecision records a fallback decision and emails the reason.
+// blockOnDecision records a fallback decision and reports the failure.
 func (e *Engine) blockOnDecision(ctx context.Context, incident store.Incident, stage string, cause error) error {
 	reason := "Gemini did not return a usable decision, so CarryOn did not resume: " + cause.Error()
 	if err := e.recordDecision(ctx, incident, "", stage, decision.Result{
@@ -294,7 +291,25 @@ func (e *Engine) blockOnDecision(ctx context.Context, incident store.Incident, s
 	}); err != nil {
 		return err
 	}
+	if stage == "pre" {
+		_ = e.sendBack(ctx, incident, "skipped: no Gemini decision", "", reason)
+	} else {
+		e.enqueueFinish(ctx, incident, "no decision", reason)
+	}
 	return e.closeIncident(ctx, incident, store.IncidentBlocked, reason)
+}
+
+// enqueueFinish reports the end of a run that produced no decision.
+func (e *Engine) enqueueFinish(ctx context.Context, incident store.Incident, action, reason string) {
+	record, _ := e.DB.ResumeForIncident(ctx, incident.Provider, incident.SessionID, incident.ID)
+	outcome := e.lastOutcome
+	_ = e.enqueue(ctx, resumeKey(record.ID, "finish", record.Attempts), mail.Event{
+		Kind: mail.KindResumeFinish, Provider: incident.Provider, Action: action,
+		Reason: reason, SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
+		ExitCode: outcome.ExitCode, TimedOut: outcome.TimedOut,
+		LastMessage: outcome.LastMessage, Files: outcome.Files, TestOutput: outcome.TestOutput,
+		Simulated: incident.Simulated, Now: e.now(),
+	})
 }
 
 func (e *Engine) recordDecision(ctx context.Context, incident store.Incident, resumeID, stage string, result decision.Result) error {
@@ -316,25 +331,12 @@ func (e *Engine) recordDecision(ctx context.Context, incident store.Incident, re
 	})
 }
 
-// closeIncident stores a terminal state and emails when it matters.
+// closeIncident stores a terminal state. Emails are sent by the caller.
 func (e *Engine) closeIncident(ctx context.Context, incident store.Incident, state, reason string) error {
 	if err := e.DB.UpdateIncident(ctx, incident.ID, incidentUpdate(incident, state, reason)); err != nil {
 		return err
 	}
 	e.logf("incident %s -> %s: %s", incident.Provider, state, reason)
-	if state == store.IncidentSkipped || state == store.IncidentBlocked {
-		kind := mail.KindDecisionSkip
-		action := "skip"
-		if state == store.IncidentBlocked {
-			kind = mail.KindDecisionBlock
-			action = "stop"
-		}
-		return e.enqueue(ctx, "decision:"+incident.ID, mail.Event{
-			Kind: kind, Provider: incident.Provider, Action: action, Reason: reason,
-			SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
-			Simulated: incident.Simulated, Now: e.now(),
-		})
-	}
 	return nil
 }
 

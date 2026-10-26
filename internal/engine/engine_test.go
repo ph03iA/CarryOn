@@ -175,16 +175,13 @@ func (h *harness) subjects() []string {
 	return subjects
 }
 
-func TestLimitHitEmailsOnceAndRecordsSession(t *testing.T) {
+func TestLimitHitSendsNoEmailAndRecordsSession(t *testing.T) {
 	h := newHarness(t)
 	h.step(t)
 	h.step(t)
 
-	if len(h.sender.sent) != 1 {
-		t.Fatalf("want exactly one limit email, got %v", h.subjects())
-	}
-	if !strings.Contains(h.sender.sent[0].Subject, "limit hit") {
-		t.Fatalf("unexpected subject: %s", h.sender.sent[0].Subject)
+	if len(h.sender.sent) != 0 {
+		t.Fatalf("a limit hit must not email, got %v", h.subjects())
 	}
 	incidents, err := h.db.Incidents(context.Background())
 	if err != nil || len(incidents) != 1 {
@@ -217,8 +214,8 @@ func TestResetConfirmationRequiresFreshReading(t *testing.T) {
 func TestFullJourneyWithRestart(t *testing.T) {
 	h := newHarness(t)
 	h.step(t)
-	if len(h.sender.sent) != 1 {
-		t.Fatalf("want the limit email first: %v", h.subjects())
+	if len(h.sender.sent) != 0 {
+		t.Fatalf("a limit hit must not email: %v", h.subjects())
 	}
 
 	// The reset happens and a fresh reading confirms it.
@@ -228,6 +225,9 @@ func TestFullJourneyWithRestart(t *testing.T) {
 	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
 	h.step(t)
 
+	if countBack(h.sender.sent) != 1 {
+		t.Fatalf("want exactly one back email, got %v", h.subjects())
+	}
 	if h.runner.calls != 1 {
 		t.Fatalf("want one resume run, got %d", h.runner.calls)
 	}
@@ -238,10 +238,13 @@ func TestFullJourneyWithRestart(t *testing.T) {
 		t.Fatal("resume prompt must start with the fixed instruction")
 	}
 
-	subjects := strings.Join(h.subjects(), "\n")
-	for _, want := range []string{"limit hit", "resumed", "finished"} {
-		if !strings.Contains(subjects, want) {
-			t.Fatalf("missing %q email in:\n%s", want, subjects)
+	combined := strings.Join(h.subjects(), "\n")
+	for _, message := range h.sender.sent {
+		combined += "\n" + message.Body
+	}
+	for _, want := range []string{"is back", "resuming your session", "finished"} {
+		if !strings.Contains(combined, want) {
+			t.Fatalf("missing %q in emails:\n%s", want, combined)
 		}
 	}
 	finish := h.sender.sent[len(h.sender.sent)-1]
@@ -359,9 +362,12 @@ func TestDecisionFailureBlocksAndEmails(t *testing.T) {
 	if h.runner.calls != 0 {
 		t.Fatal("must not resume when Gemini fails")
 	}
+	if countBack(h.sender.sent) != 1 || len(h.sender.sent) != 1 {
+		t.Fatalf("want exactly one back email, got %v", h.subjects())
+	}
 	last := h.sender.sent[len(h.sender.sent)-1]
-	if !strings.Contains(last.Subject, "blocked") {
-		t.Fatalf("expected a blocked email, got %s", last.Subject)
+	if !strings.Contains(last.Body, "skipped: no Gemini decision") {
+		t.Fatalf("expected a no-decision back email:\n%s", last.Body)
 	}
 	incidents, _ := h.db.Incidents(context.Background())
 	if incidents[0].State != store.IncidentBlocked {
@@ -392,9 +398,12 @@ func TestAlreadyContinuedIsSkipped(t *testing.T) {
 	if h.runner.calls != 0 {
 		t.Fatal("must not resume a session that was already continued")
 	}
+	if countBack(h.sender.sent) != 1 || len(h.sender.sent) != 1 {
+		t.Fatalf("want exactly one back email, got %v", h.subjects())
+	}
 	last := h.sender.sent[len(h.sender.sent)-1]
-	if !strings.Contains(last.Subject, "skipped") {
-		t.Fatalf("expected a skip email, got %s", last.Subject)
+	if !strings.Contains(last.Body, "skipped: the session was already continued") {
+		t.Fatalf("expected an already-continued back email:\n%s", last.Body)
 	}
 }
 
@@ -430,11 +439,8 @@ func TestCutOffFoundAtResetWhenMissingInitially(t *testing.T) {
 
 	// First sweep sees the limit but no cut-off session.
 	h.step(t)
-	if len(h.sender.sent) != 1 {
-		t.Fatalf("want the limit email first: %v", h.subjects())
-	}
-	if !strings.Contains(h.sender.sent[0].Body, "search again") {
-		t.Fatalf("limit email should promise a retry:\n%s", h.sender.sent[0].Body)
+	if len(h.sender.sent) != 0 {
+		t.Fatalf("a limit hit must not email: %v", h.subjects())
 	}
 
 	// The session log appears after the first check, inside the window.
@@ -650,4 +656,97 @@ func TestDecisionCarriesAttemptCount(t *testing.T) {
 		}
 	}
 	t.Fatalf("no decision carried the attempt count: %+v", h.decider.requests)
+}
+
+func countBack(messages []mail.Message) int {
+	count := 0
+	for _, message := range messages {
+		if strings.Contains(message.Subject, "is back") {
+			count++
+		}
+	}
+	return count
+}
+
+func TestConfirmedResetSendsOneBackEmailWhenNoSession(t *testing.T) {
+	h := newHarness(t)
+	os.Remove(filepath.Join(h.root, "proj-a", fixtureSessionID+".jsonl"))
+	h.step(t)
+	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
+	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
+	h.step(t)
+
+	if countBack(h.sender.sent) != 1 || len(h.sender.sent) != 1 {
+		t.Fatalf("want exactly one back email, got %v", h.subjects())
+	}
+	if !strings.Contains(h.sender.sent[0].Body, "nothing to resume") {
+		t.Fatalf("unexpected back email:\n%s", h.sender.sent[0].Body)
+	}
+	if h.runner.calls != 0 {
+		t.Fatal("nothing should resume")
+	}
+}
+
+func TestConfirmedResetSendsOneBackEmailWhenDone(t *testing.T) {
+	h := newHarness(t)
+	h.decider.results = []decision.Result{{Action: decision.ActionSkipDone, Reason: "the task was complete"}}
+	h.step(t)
+	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
+	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
+	h.step(t)
+
+	if countBack(h.sender.sent) != 1 || len(h.sender.sent) != 1 {
+		t.Fatalf("want exactly one back email, got %v", h.subjects())
+	}
+	if !strings.Contains(h.sender.sent[0].Body, "skipped: the task already looked done") {
+		t.Fatalf("unexpected back email:\n%s", h.sender.sent[0].Body)
+	}
+}
+
+func TestConfirmedResetSendsOneBackEmailWhenStuck(t *testing.T) {
+	h := newHarness(t)
+	h.decider.results = []decision.Result{{Action: decision.ActionSkipStuck, Reason: "the agent was looping"}}
+	h.step(t)
+	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
+	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
+	h.step(t)
+
+	if countBack(h.sender.sent) != 1 || len(h.sender.sent) != 1 {
+		t.Fatalf("want exactly one back email, got %v", h.subjects())
+	}
+	if !strings.Contains(h.sender.sent[0].Body, "skipped: the agent looked stuck") {
+		t.Fatalf("unexpected back email:\n%s", h.sender.sent[0].Body)
+	}
+}
+
+func TestUnconfirmedResetSendsNothingUntil24Hours(t *testing.T) {
+	h := newHarness(t)
+	h.step(t)
+	if len(h.sender.sent) != 0 {
+		t.Fatalf("a limit hit must not email: %v", h.subjects())
+	}
+
+	// The reset time passes but the limit is still exhausted.
+	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
+	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(10 * time.Hour)
+	h.step(t)
+	if len(h.sender.sent) != 0 {
+		t.Fatalf("an unconfirmed reset must not email: %v", h.subjects())
+	}
+
+	h.engine.Now = func() time.Time { return h.now.Add(25 * time.Hour) }
+	h.step(t)
+	if len(h.sender.sent) != 1 {
+		t.Fatalf("want one needs-you email, got %v", h.subjects())
+	}
+	if !strings.Contains(h.sender.sent[0].Subject, "needs you") || !strings.Contains(h.sender.sent[0].Body, "24 hours") {
+		t.Fatalf("unexpected expiry email: %s\n%s", h.sender.sent[0].Subject, h.sender.sent[0].Body)
+	}
 }
