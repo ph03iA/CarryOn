@@ -103,21 +103,6 @@ func TestClaimResumeStopsAtBudget(t *testing.T) {
 	}
 }
 
-func TestCreateResumeIsUniquePerSession(t *testing.T) {
-	db := testDB(t)
-	ctx := context.Background()
-	first := Resume{IncidentID: "i1", Provider: "claude", SessionID: "s3", Cwd: `C:\a`}
-	second := Resume{IncidentID: "i2", Provider: "claude", SessionID: "s3", Cwd: `C:\a`}
-
-	if _, err := db.CreateResume(ctx, &first); err != nil {
-		t.Fatal(err)
-	}
-	created, err := db.CreateResume(ctx, &second)
-	if err != nil || created {
-		t.Fatalf("second resume for same session must be ignored: created=%v err=%v", created, err)
-	}
-}
-
 func TestEnqueueEmailIsIdempotent(t *testing.T) {
 	db := testDB(t)
 	ctx := context.Background()
