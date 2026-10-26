@@ -68,8 +68,8 @@ func Label(duration time.Duration) string {
 	}
 }
 
-// resolveBinary finds a native executable, rejecting shell shims.
-func resolveBinary(name, configured string, fallbacks []string) (string, error) {
+// ResolveBinary finds a native executable, rejecting shell shims.
+func ResolveBinary(name, configured string, fallbacks []string) (string, error) {
 	if strings.TrimSpace(configured) != "" {
 		return nativeOnly(configured)
 	}
@@ -106,8 +106,8 @@ func nativeOnly(path string) (string, error) {
 	return absolute, nil
 }
 
-// codexFallbacks lists npm-installed native Codex binaries.
-func codexFallbacks() []string {
+// CodexFallbacks lists npm-installed native Codex binaries.
+func CodexFallbacks() []string {
 	if runtime.GOOS != "windows" {
 		return nil
 	}

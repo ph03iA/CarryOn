@@ -38,7 +38,7 @@ func (c Codex) environment() []string {
 // Read performs the app-server handshake and reads rate limits. It never
 // creates a thread or a turn, so no prompt is sent.
 func (c Codex) Read(ctx context.Context) (Snapshot, error) {
-	binary, err := resolveBinary("codex", c.Binary, codexFallbacks())
+	binary, err := ResolveBinary("codex", c.Binary, CodexFallbacks())
 	if err != nil {
 		return Snapshot{}, err
 	}

@@ -32,7 +32,7 @@ func (Claude) Name() string { return "claude" }
 
 // Read starts Claude Code in stream-json mode and asks for usage only.
 func (c Claude) Read(ctx context.Context) (Snapshot, error) {
-	binary, err := resolveBinary("claude", c.Binary, nil)
+	binary, err := ResolveBinary("claude", c.Binary, nil)
 	if err != nil {
 		return Snapshot{}, err
 	}
