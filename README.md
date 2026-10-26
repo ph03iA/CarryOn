@@ -194,6 +194,16 @@ Get-ItemProperty "HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy" VerifiedAndR
 
 `1` means Smart App Control is enforcing. Either turn Smart App Control off in Windows Security → App & browser control → Smart App Control, or run CarryOn on a machine where application control allows locally built binaries. CarryOn cannot work around this policy.
 
+If only the Go test binaries are blocked, the logic suites can still run under WSL, because Smart App Control does not apply there:
+
+```powershell
+$env:GOOS = "linux"; $env:GOARCH = "amd64"; $env:CGO_ENABLED = "0"
+go test -c -o "$env:TEMP\carryon-wsl\config.test" ./internal/config
+wsl -d Ubuntu -- "$(wslpath -a "$env:TEMP\carryon-wsl\config.test")"
+```
+
+The Windows-only job-object tests (`internal/winjob`, and the process-spawning paths in `resume` and `quota`) still need to run on Windows.
+
 **Codex not found**
 
 CarryOn rejects `.cmd`, `.bat`, and `.ps1` shims. It searches `codex` on `PATH` and then the npm vendor folder for the native `codex.exe`. Set `codex_bin` in `config.json` if yours lives elsewhere.
