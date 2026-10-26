@@ -148,3 +148,20 @@ func TestRenderFinishListsFilesAndTests(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderRedactsSecrets(t *testing.T) {
+	subject, body := Render(Event{
+		Kind: KindResumeFinish, Provider: "claude", SessionID: "s",
+		Action: "done", Reason: "used re_abcdefghijklmnopqrstuvwx and sk-abcdefghijklmnopqrstuvwx",
+		LastMessage: "RESEND_API_KEY=\"re_zyxwvutsrqponmlkjihgfedc\"",
+		TestOutput:  "GEMINI_API_KEY=gm_abcdefghijklmnop",
+	})
+	for _, secret := range []string{"re_abcdefghijklmnopqrstuvwx", "sk-abcdefghijklmnopqrstuvwx", "re_zyxwvutsrqponmlkjihgfedc", "gm_abcdefghijklmnop"} {
+		if strings.Contains(subject, secret) || strings.Contains(body, secret) {
+			t.Fatalf("secret leaked into email: %s", secret)
+		}
+	}
+	if !strings.Contains(body, "[REDACTED]") {
+		t.Fatalf("expected redaction markers:\n%s", body)
+	}
+}

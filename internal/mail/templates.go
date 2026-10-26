@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/ph03iA/CarryOn/internal/redact"
 )
 
 // Event kinds CarryOn emails.
@@ -47,7 +49,7 @@ func Render(event Event) (string, string) {
 		subject = "[SIMULATED] " + subject
 		body = "SIMULATED — no real usage limit was hit.\n\n" + body
 	}
-	return subject, body
+	return redact.Text(subject).Text, redact.Text(body).Text
 }
 
 func subjectFor(event Event) string {
