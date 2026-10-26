@@ -173,11 +173,12 @@ func parseTimestamp(value string) time.Time {
 	return parsed.UTC()
 }
 
-// session builds a Session from a log that already qualified as cut off.
-func (s Scanner) session(provider, path string) (Session, error) {
+// inspectSession reads one log and reports whether its newest real event is a
+// usage-limit error.
+func (s Scanner) inspectSession(provider, path string) (Session, bool, error) {
 	lines, err := readTail(path, s.MaxBytes)
 	if err != nil {
-		return Session{}, err
+		return Session{}, false, err
 	}
 	found := Session{Provider: provider, Path: path}
 	info, err := os.Stat(path)
@@ -185,6 +186,7 @@ func (s Scanner) session(provider, path string) (Session, error) {
 		found.ModTime = info.ModTime().UTC()
 	}
 	found.ID = sessionID(provider, path, lines)
+	cut := false
 	for index := len(lines) - 1; index >= 0; index-- {
 		event, ok := parseEvent(provider, lines[index].Data)
 		if !ok {
@@ -199,13 +201,14 @@ func (s Scanner) session(provider, path string) (Session, error) {
 		if found.CutOffAt.IsZero() {
 			found.CutOffAt = event.at
 			found.ResumeFrom = lines[index].End
+			cut = event.limitError
 			continue
 		}
 		if found.LastMessage == "" {
 			found.LastMessage = summarize(assistantText(provider, lines[index].Data))
 		}
 	}
-	return found, nil
+	return found, cut, nil
 }
 
 // sessionID derives the conversation id from the filename or session_meta.
@@ -266,7 +269,8 @@ func (s Scanner) FindByID(provider, id string) (Session, error) {
 		if sessionID(provider, path, lines) != id {
 			continue
 		}
-		return s.session(provider, path)
+		found, _, err := s.inspectSession(provider, path)
+		return found, err
 	}
 	return Session{}, ErrNotFound
 }

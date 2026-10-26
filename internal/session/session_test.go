@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func claudeScanner(scenario string) Scanner {
@@ -16,7 +17,7 @@ func codexScanner(scenario string) Scanner {
 }
 
 func TestFindClaudeCutOff(t *testing.T) {
-	found, ok, err := claudeScanner("cutoff").FindCutOff(Claude)
+	found, ok, err := claudeScanner("cutoff").FindCutOff(Claude, time.Time{})
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -38,7 +39,7 @@ func TestFindClaudeCutOff(t *testing.T) {
 }
 
 func TestIgnoresOldErrorFollowedBySuccess(t *testing.T) {
-	_, ok, err := claudeScanner("old_error").FindCutOff(Claude)
+	_, ok, err := claudeScanner("old_error").FindCutOff(Claude, time.Time{})
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -48,7 +49,7 @@ func TestIgnoresOldErrorFollowedBySuccess(t *testing.T) {
 }
 
 func TestIgnoresTrailingMetadata(t *testing.T) {
-	found, ok, err := claudeScanner("trailing_metadata").FindCutOff(Claude)
+	found, ok, err := claudeScanner("trailing_metadata").FindCutOff(Claude, time.Time{})
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -80,7 +81,7 @@ func TestDetectsAlreadyContinued(t *testing.T) {
 	}
 
 	scanner := Scanner{ClaudeRoot: dir, MaxBytes: 8 << 20}
-	found, ok, err := scanner.FindCutOff(Claude)
+	found, ok, err := scanner.FindCutOff(Claude, time.Time{})
 	if err != nil || !ok {
 		t.Fatalf("scan: ok=%v err=%v", ok, err)
 	}
@@ -105,7 +106,7 @@ func TestDetectsAlreadyContinued(t *testing.T) {
 }
 
 func TestFindCodexCutOff(t *testing.T) {
-	found, ok, err := codexScanner("cutoff").FindCutOff(Codex)
+	found, ok, err := codexScanner("cutoff").FindCutOff(Codex, time.Time{})
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -121,7 +122,7 @@ func TestFindCodexCutOff(t *testing.T) {
 }
 
 func TestIgnoresCodexOldErrorFollowedBySuccess(t *testing.T) {
-	_, ok, err := codexScanner("old_error").FindCutOff(Codex)
+	_, ok, err := codexScanner("old_error").FindCutOff(Codex, time.Time{})
 	if err != nil {
 		t.Fatalf("scan: %v", err)
 	}
@@ -151,5 +152,31 @@ func TestLastMessagePrefersTaskComplete(t *testing.T) {
 	}
 	if got := scanner.LastMessage(found); !strings.Contains(got, "parser handles empty input") {
 		t.Fatalf("unexpected last message: %q", got)
+	}
+}
+
+func TestFindCutOffIgnoresSessionsOutsideTheWindow(t *testing.T) {
+	scanner := claudeScanner("cutoff")
+	// The fixture's cut-off is 2026-10-26T10:05Z. A 5-hour window that started
+	// at 11:00Z cannot have cut this session off.
+	since := time.Date(2026, 10, 26, 11, 0, 0, 0, time.UTC)
+	_, ok, err := scanner.FindCutOff(Claude, since)
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if ok {
+		t.Fatal("a cut-off before the window started must be ignored")
+	}
+}
+
+func TestFindCutOffAcceptsSessionsInsideTheWindow(t *testing.T) {
+	scanner := claudeScanner("cutoff")
+	since := time.Date(2026, 10, 26, 7, 0, 0, 0, time.UTC)
+	found, ok, err := scanner.FindCutOff(Claude, since)
+	if err != nil || !ok {
+		t.Fatalf("scan: ok=%v err=%v", ok, err)
+	}
+	if found.ID == "" {
+		t.Fatal("expected a session id")
 	}
 }

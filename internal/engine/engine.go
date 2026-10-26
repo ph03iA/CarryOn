@@ -135,6 +135,7 @@ func (e *Engine) recordExhausted(ctx context.Context, snapshot quota.Snapshot) [
 			Provider: snapshot.Provider, AccountID: snapshot.AccountID,
 			WindowID: window.ID, WindowLabel: window.Label,
 			UsedPercent: window.UsedPercent, ResetAt: window.ResetsAt,
+			WindowDuration: window.Duration,
 		}
 		created, err := e.DB.CreateIncident(ctx, &incident)
 		if err != nil {
@@ -153,10 +154,7 @@ func (e *Engine) recordExhausted(ctx context.Context, snapshot quota.Snapshot) [
 // announceIncident finds the cut-off session and emails the limit hit.
 func (e *Engine) announceIncident(ctx context.Context, incident store.Incident) error {
 	update := store.IncidentUpdate{State: store.IncidentAwaitingReset}
-	found, ok, err := e.Scanner.FindCutOff(incident.Provider)
-	if err != nil {
-		e.logErr("scan %s sessions: %v", incident.Provider, err)
-	}
+	found, ok := e.findCutOff(incident)
 	if ok {
 		update.SessionID = found.ID
 		update.SessionPath = found.Path
@@ -182,8 +180,8 @@ func (e *Engine) announceIncident(ctx context.Context, incident store.Incident) 
 		SessionID: update.SessionID, SessionCwd: update.SessionCwd,
 		Simulated: incident.Simulated, Now: e.now(),
 	}
-	if !ok {
-		event.Reason = "CarryOn found no session that ended on a usage-limit error, so it will not resume anything."
+if !ok {
+		event.Reason = "CarryOn found no cut-off session yet and will search again when the limit resets."
 	}
 	return e.enqueue(ctx, "limit:"+incident.ID, event)
 }
@@ -368,4 +366,42 @@ func (e *Engine) LoadStatus(ctx context.Context) (Status, error) {
 		return Status{}, err
 	}
 	return Status{Incidents: incidents, Resumes: resumes, Emails: emails, Decisions: decisions}, nil
+}
+
+// findCutOff searches for a session cut off inside the incident's window.
+func (e *Engine) findCutOff(incident store.Incident) (session.Session, bool) {
+	since := time.Time{}
+	if incident.WindowDuration > 0 {
+		since = incident.ResetAt.Add(-incident.WindowDuration)
+	}
+	found, ok, err := e.Scanner.FindCutOff(incident.Provider, since)
+	if err != nil {
+		e.logErr("scan %s sessions: %v", incident.Provider, err)
+		return session.Session{}, false
+	}
+	return found, ok
+}
+
+// attachCutOffSession retries the search at reset time.
+func (e *Engine) attachCutOffSession(ctx context.Context, incident store.Incident) (store.Incident, error) {
+	found, ok := e.findCutOff(incident)
+	if !ok {
+		return incident, errors.New("no cut-off session was found in this window")
+	}
+	incident.SessionID = found.ID
+	incident.SessionPath = found.Path
+	incident.SessionCwd = found.Cwd
+	incident.CutOffAt = found.CutOffAt
+	incident.CutOffOffset = found.ResumeFrom
+	if _, err := e.DB.CreateResume(ctx, &store.Resume{
+		IncidentID: incident.ID, Provider: incident.Provider,
+		SessionID: found.ID, Cwd: found.Cwd, Simulated: incident.Simulated,
+	}); err != nil {
+		return incident, err
+	}
+	if err := e.DB.UpdateIncident(ctx, incident.ID, incidentUpdate(incident, store.IncidentAwaitingReset, "cut-off session found at reset")); err != nil {
+		return incident, err
+	}
+	e.logf("found cut-off session %s at reset", found.ID)
+	return incident, nil
 }

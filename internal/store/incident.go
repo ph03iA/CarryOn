@@ -35,11 +35,12 @@ type Incident struct {
 	SessionID    string
 	SessionPath  string
 	SessionCwd   string
-	CutOffAt     time.Time
-	CutOffOffset int64
-	Simulated    bool
-	Reason       string
-	UpdatedAt    time.Time
+	CutOffAt      time.Time
+	CutOffOffset  int64
+	WindowDuration time.Duration
+	Simulated     bool
+	Reason        string
+	UpdatedAt     time.Time
 }
 
 // IncidentKey is stable for one provider, account, window and reset time.
@@ -64,13 +65,14 @@ func (d *DB) CreateIncident(ctx context.Context, incident *Incident) (bool, erro
 	}
 	result, err := d.db.ExecContext(ctx, `INSERT INTO incidents
  (id,provider,account_id,window_id,window_label,used_percent,reset_at,detected_at,state,
-  session_id,session_path,session_cwd,cut_off_at,cut_off_offset,simulated,reason,updated_at)
- VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  session_id,session_path,session_cwd,cut_off_at,cut_off_offset,window_duration,simulated,reason,updated_at)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(provider,account_id,window_id,reset_at) DO NOTHING`,
 		incident.ID, incident.Provider, incident.AccountID, incident.WindowID, incident.WindowLabel,
 		incident.UsedPercent, unix(incident.ResetAt), unix(incident.DetectedAt), incident.State,
 		incident.SessionID, incident.SessionPath, incident.SessionCwd, unix(incident.CutOffAt),
-		incident.CutOffOffset, boolInt(incident.Simulated), incident.Reason, unix(now))
+		incident.CutOffOffset, int64(incident.WindowDuration/time.Second),
+		boolInt(incident.Simulated), incident.Reason, unix(now))
 	if err != nil {
 		return false, fmt.Errorf("record incident: %w", err)
 	}
@@ -79,22 +81,23 @@ func (d *DB) CreateIncident(ctx context.Context, incident *Incident) (bool, erro
 }
 
 const incidentColumns = `id,provider,account_id,window_id,window_label,used_percent,reset_at,
- detected_at,state,session_id,session_path,session_cwd,cut_off_at,cut_off_offset,simulated,reason,updated_at`
+ detected_at,state,session_id,session_path,session_cwd,cut_off_at,cut_off_offset,window_duration,simulated,reason,updated_at`
 
 func scanIncident(row interface{ Scan(...any) error }) (Incident, error) {
 	var incident Incident
-	var reset, detected, cutOff, updated int64
+	var reset, detected, cutOff, updated, duration int64
 	var simulated int
 	err := row.Scan(&incident.ID, &incident.Provider, &incident.AccountID, &incident.WindowID,
 		&incident.WindowLabel, &incident.UsedPercent, &reset, &detected, &incident.State,
 		&incident.SessionID, &incident.SessionPath, &incident.SessionCwd, &cutOff,
-		&incident.CutOffOffset, &simulated, &incident.Reason, &updated)
+		&incident.CutOffOffset, &duration, &simulated, &incident.Reason, &updated)
 	if err != nil {
 		return Incident{}, err
 	}
 	incident.ResetAt = fromUnix(reset)
 	incident.DetectedAt = fromUnix(detected)
 	incident.CutOffAt = fromUnix(cutOff)
+	incident.WindowDuration = time.Duration(duration) * time.Second
 	incident.UpdatedAt = fromUnix(updated)
 	incident.Simulated = simulated != 0
 	return incident, nil

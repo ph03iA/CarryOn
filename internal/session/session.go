@@ -117,36 +117,22 @@ func (s Scanner) files(provider string) ([]string, error) {
 	return paths, nil
 }
 
-// FindCutOff returns the newest session whose last real event is a limit error.
-func (s Scanner) FindCutOff(provider string) (Session, bool, error) {
+// FindCutOff returns the newest session whose last real event is a limit
+// error, ignoring cut-offs written before since. A zero since disables the bound.
+func (s Scanner) FindCutOff(provider string, since time.Time) (Session, bool, error) {
 	paths, err := s.files(provider)
 	if err != nil {
 		return Session{}, false, err
 	}
 	for _, path := range paths {
-		if s.cutOff(provider, path) {
-			found, err := s.session(provider, path)
-			if err != nil {
-				continue
-			}
-			return found, true, nil
-		}
-	}
-	return Session{}, false, nil
-}
-
-// cutOff reports whether the newest real event in the file is a limit error.
-func (s Scanner) cutOff(provider, path string) bool {
-	lines, err := readTail(path, s.MaxBytes)
-	if err != nil {
-		return false
-	}
-	for index := len(lines) - 1; index >= 0; index-- {
-		event, ok := parseEvent(provider, lines[index].Data)
-		if !ok || !event.real {
+		found, cut, err := s.inspectSession(provider, path)
+		if err != nil || !cut {
 			continue
 		}
-		return event.limitError
+		if !since.IsZero() && !found.CutOffAt.After(since) {
+			continue
+		}
+		return found, true, nil
 	}
-	return false
+	return Session{}, false, nil
 }

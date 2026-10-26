@@ -17,7 +17,11 @@ import (
 // runCycle confirms the reset, decides, and runs up to the attempt budget.
 func (e *Engine) runCycle(ctx context.Context, incident store.Incident) error {
 	if incident.SessionID == "" {
-		return e.closeIncident(ctx, incident, store.IncidentSkipped, "no cut-off session was found")
+		attached, err := e.attachCutOffSession(ctx, incident)
+		if err != nil {
+			return e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
+		}
+		incident = attached
 	}
 	found, err := e.sessionFor(incident)
 	if err != nil {

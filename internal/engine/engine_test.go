@@ -386,3 +386,38 @@ func TestSimulateIsLabelledAndUsesTheSession(t *testing.T) {
 		}
 	}
 }
+
+func TestCutOffFoundAtResetWhenMissingInitially(t *testing.T) {
+	h := newHarness(t)
+	path := filepath.Join(h.root, "proj-a", fixtureSessionID+".jsonl")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+
+	// First sweep sees the limit but no cut-off session.
+	h.step(t)
+	if len(h.sender.sent) != 1 {
+		t.Fatalf("want the limit email first: %v", h.subjects())
+	}
+	if !strings.Contains(h.sender.sent[0].Body, "search again") {
+		t.Fatalf("limit email should promise a retry:\n%s", h.sender.sent[0].Body)
+	}
+
+	// The session log appears after the first check, inside the window.
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
+	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
+	h.step(t)
+
+	if h.runner.calls != 1 {
+		t.Fatalf("reset-time search should resume the session, got %d runs", h.runner.calls)
+	}
+}
