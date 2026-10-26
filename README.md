@@ -174,7 +174,7 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - Claude models can omit a window after it resets; an omitted window is treated as available.
 - A crash after a resume starts consumes one attempt; further resumes need a fresh decision.
 - The two-resume budget is per limit incident, not per session forever. A session cut off by a later window gets a fresh budget.
-- "Files changed" compares against a stash snapshot taken before the run, so your pre-existing uncommitted work is not reported.
+- "Files changed" compares against a snapshot taken before the run: a stash commit when the folder was dirty, or the pre-run HEAD when it was clean. Commits made by the agent therefore appear too, and your pre-existing work does not.
 - One instance only: `watch` and `simulate` take a named mutex and exit if another CarryOn holds it.
 - The cut-off search only accepts sessions written after the current window started, and retries once at reset time.
 - Resend idempotency keys expire after 24 hours. The outbox retries within that window.
@@ -253,3 +253,5 @@ Policy changes are recorded here as the build evolves.
 - **2026-10-26 — Redaction covers AKIA and github_pat_.** Added to the existing pattern set.
 - **2026-10-26 — Email only when a limit comes back.** The run-out email and the separate resume-start email were removed. After a reset is confirmed, CarryOn sends exactly one "back" email saying what it did (resuming, nothing to resume, or skipped with a reason). The finish email and the 24-hour needs-you email remain. `simulate` follows the same rules and is labelled SIMULATED.
 - **2026-10-26 — Global single-instance mutex.** `watch` takes `Global\CarryOn`, so an S4U watcher in another Windows session still blocks a second watcher. `simulate` no longer takes the lock; the watcher skips simulated incidents.
+- **2026-10-26 — No old-database upgrades.** There are no released databases, so `store.Open` creates the current schema and no longer runs silent ALTER migrations.
+- **2026-10-26 — Diff from the pre-run HEAD.** A clean folder records `HEAD` before the run, so commits made by the agent appear in "files changed".

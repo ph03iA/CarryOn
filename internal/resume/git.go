@@ -20,6 +20,10 @@ type gitSnapshot struct {
 func captureGit(ctx context.Context, dir string) gitSnapshot {
 	snapshot := gitSnapshot{untracked: map[string]bool{}}
 	snapshot.commit = strings.TrimSpace(runGit(ctx, dir, "stash", "create"))
+	if snapshot.commit == "" {
+		// A clean tree has no stash; remember HEAD so agent commits still show.
+		snapshot.commit = strings.TrimSpace(runGit(ctx, dir, "rev-parse", "HEAD"))
+	}
 	for _, path := range splitLines(runGit(ctx, dir, "ls-files", "--others", "--exclude-standard")) {
 		snapshot.untracked[path] = true
 	}

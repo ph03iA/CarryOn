@@ -259,3 +259,30 @@ func TestGitEnvKeepsSecretsOut(t *testing.T) {
 		t.Fatal("a secret leaked into git's environment")
 	}
 }
+
+func TestCleanRepoDiffsFromHead(t *testing.T) {
+	dir := newGitRepo(t)
+	snapshot := captureGit(context.Background(), dir)
+
+	os.WriteFile(filepath.Join(dir, "agent.txt"), []byte("agent\n"), 0o600)
+	runGitForTest(t, dir, "add", "-A")
+	runGitForTest(t, dir, "commit", "-m", "agent commit")
+
+	files, _, excerpt := snapshot.changes(context.Background(), dir)
+	assertContains(t, files, "agent.txt")
+	if !strings.Contains(excerpt, "agent.txt") {
+		t.Fatalf("diff excerpt misses the agent commit:\n%s", excerpt)
+	}
+}
+
+func newGitRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	runGitForTest(t, dir, "init")
+	runGitForTest(t, dir, "config", "user.email", "test@example.com")
+	runGitForTest(t, dir, "config", "user.name", "Test")
+	os.WriteFile(filepath.Join(dir, "base.txt"), []byte("base\n"), 0o600)
+	runGitForTest(t, dir, "add", "-A")
+	runGitForTest(t, dir, "commit", "-m", "baseline")
+	return dir
+}
