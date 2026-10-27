@@ -177,7 +177,9 @@ func TestClaudeTranscriptIncludesPromptAndAssistantText(t *testing.T) {
 }
 
 func TestCodexTranscriptIncludesPromptAndAssistantText(t *testing.T) {
-	scanner := codexScanner("cutoff")
+	// Its own folder: FindCutOff picks the newest file by mtime, and a fresh
+	// checkout gives every fixture the same mtime.
+	scanner := codexScanner("transcript")
 	found, ok, err := scanner.FindCutOff(Codex, time.Time{})
 	if err != nil || !ok {
 		t.Fatalf("scan: ok=%v err=%v", ok, err)
