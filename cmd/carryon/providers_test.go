@@ -29,9 +29,9 @@ func TestProvidersAfterInit(t *testing.T) {
 
 func TestWatchLabel(t *testing.T) {
 	cases := map[string]string{
-		"claude": "Claude Code",
-		"codex":  "Codex",
-		"both":   "Claude Code and Codex",
+		"claude": "claude",
+		"codex":  "codex",
+		"both":   "both",
 	}
 	for value, want := range cases {
 		if got := watchLabel(value); got != want {

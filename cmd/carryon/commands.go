@@ -157,7 +157,7 @@ func runStatus(_ context.Context, paths config.Paths, args []string) error {
 		fmt.Println(string(data))
 		return nil
 	}
-	fmt.Printf("CarryOn %s — state in %s\n", version, paths.Dir)
+	fmt.Printf("CarryOn %s - state in %s\n", version, paths.Dir)
 	fmt.Printf("Watching: %s\n", watchLabel(cfg.Providers))
 	fmt.Printf("Recipient: %s  Sender: %s  Model: %s\n\n", cfg.Recipient, cfg.Sender, cfg.GeminiModel)
 	printIncidents(status.Incidents)
@@ -240,12 +240,9 @@ func providersAfterInit(cfg config.Config, args []string) (config.Config, error)
 
 // watchLabel names the selected tools for status and init output.
 func watchLabel(providers string) string {
-	switch providers {
-	case "claude":
-		return "Claude Code"
-	case "codex":
-		return "Codex"
-	default:
-		return "Claude Code and Codex"
+	normalized, err := config.NormalizeProviders(providers)
+	if err != nil {
+		return "both"
 	}
+	return normalized
 }
