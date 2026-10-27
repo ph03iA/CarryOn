@@ -493,7 +493,8 @@ Emails (1)
         <li>Optional: a Resend API key. Without one, emails stay queued and <code>carryon status --json</code> shows them.</li>
       </ul>
 
-      <h3>Start watching</h3>
+      <p>Choose a guide: <a href="#real-use">real use with the watcher</a> or <a href="#simulation">simulation for testing</a>.</p>
+      <h3 id="real-use">Real use: watch for limits</h3>
       <ol class="steps">
         <li><div>
           <p>Clone the repository (skip this if you are already inside the cloned folder):</p>
@@ -566,6 +567,45 @@ RESEND_API_KEY=</code></pre>
           <pre><code id="cmd-decisions-windows">.\carryon.exe decisions</code></pre>
           <button class="copy" type="button" data-target="cmd-decisions-windows">Copy</button>
           <p>CarryOn polls every minute. Once a fresh usage reading confirms the reset, Gemini decides whether to resume the unfinished task or skip it. A resume is not guaranteed at the exact reset minute.</p>
+        </div></li>
+      </ol>
+
+      <h3 id="simulation">Simulation: test a resume</h3>
+      <p>Complete the build, <code>init</code>, and manual <code>.env</code> steps above first. Simulation uses your normal CarryOn configuration and fakes only the usage limit and its reset. You do not need to wait for a real limit, but Claude Code or Codex needs available usage to perform a resume.</p>
+      <p>This test makes real Gemini requests, can resume an agent and edit the selected project's files, and sends real email when configured.</p>
+      <ol class="steps">
+        <li><div>
+          <p>In a disposable project folder, start your signed-in Claude Code or Codex CLI. Ask for a small task with several steps, interrupt it while work remains, and exit the CLI.</p>
+        </div></li>
+        <li><div>
+          <p>Wait at least two minutes after exiting. From the CarryOn folder, choose the command for the tool you used. CarryOn selects its newest session that has been inactive for at least two minutes.</p>
+          <p>Claude Code, macOS / Linux:</p>
+          <pre><code id="cmd-simulate-claude">./carryon simulate</code></pre>
+          <button class="copy" type="button" data-target="cmd-simulate-claude">Copy</button>
+          <p>Claude Code, Windows PowerShell:</p>
+          <pre><code id="cmd-simulate-claude-windows">.\carryon.exe simulate</code></pre>
+          <button class="copy" type="button" data-target="cmd-simulate-claude-windows">Copy</button>
+          <p>Codex, macOS / Linux:</p>
+          <pre><code id="cmd-simulate-codex">./carryon simulate codex</code></pre>
+          <button class="copy" type="button" data-target="cmd-simulate-codex">Copy</button>
+          <p>Codex, Windows PowerShell:</p>
+          <pre><code id="cmd-simulate-codex-windows">.\carryon.exe simulate codex</code></pre>
+          <button class="copy" type="button" data-target="cmd-simulate-codex-windows">Copy</button>
+        </div></li>
+        <li><div>
+          <p>Check the provider, session ID, and folder shown in the confirmation prompt. Enter <code>y</code> only if they match your test session; enter <code>n</code> to cancel. The command labels the run <code>SIMULATED</code>.</p>
+        </div></li>
+        <li><div>
+          <p>After the command finishes, check the result:</p>
+          <p>macOS / Linux:</p>
+          <pre><code id="cmd-simulation-check">./carryon status
+./carryon decisions</code></pre>
+          <button class="copy" type="button" data-target="cmd-simulation-check">Copy</button>
+          <p>Windows PowerShell:</p>
+          <pre><code id="cmd-simulation-check-windows">.\carryon.exe status
+.\carryon.exe decisions</code></pre>
+          <button class="copy" type="button" data-target="cmd-simulation-check-windows">Copy</button>
+          <p>Gemini may resume the unfinished task or skip work that looks complete or stuck. The recorded decision explains the outcome.</p>
         </div></li>
       </ol>
 

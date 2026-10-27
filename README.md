@@ -82,7 +82,12 @@ Requirements:
 - A Gemini API key
 - Optional: a Resend API key. Without one, emails stay queued and `carryon status --json` shows them.
 
-## Start watching
+Choose how to use CarryOn:
+
+- [Real use: watch for limits](#real-use-watch-for-limits) keeps watching your normal Claude Code or Codex work and waits for a real reset.
+- [Simulation: test a resume](#simulation-test-a-resume) lets you try the resume flow without waiting for a real limit.
+
+## Real use: watch for limits
 
 Run these commands from the cloned CarryOn folder, using the block for your operating system. Build CarryOn before running `init` or `watch`.
 
@@ -198,6 +203,66 @@ Windows PowerShell:
 ```
 
 CarryOn polls every minute. Once a fresh usage reading confirms the reset, Gemini decides whether to resume the unfinished task or skip it. A resume is not guaranteed at the exact reset minute.
+
+## Simulation: test a resume
+
+Complete steps 1–3 above first: build CarryOn, set your recipient, and manually create `.env` with your keys. Simulation uses the same settings and state folder.
+
+Simulation fakes only the usage limit and its reset. It makes real Gemini calls, uses real Claude Code or Codex usage, can edit the selected project's files, and sends real email when configured. You do not need to hit a limit or wait for a reset, but the selected account needs available usage for an actual agent run.
+
+1. In a disposable project folder, start `claude` or `codex`, ask for a small task that edits files, interrupt it before completion, and exit the CLI.
+
+2. Wait at least two minutes after exiting. Automatic selection skips sessions modified in the last two minutes.
+
+3. Return to the CarryOn folder and run the command for your test session's tool. Choose one of these alternatives:
+
+### Claude Code
+
+macOS / Linux:
+
+```sh
+./carryon simulate
+```
+
+Windows PowerShell:
+
+```powershell
+.\carryon.exe simulate
+```
+
+### Codex
+
+macOS / Linux:
+
+```sh
+./carryon simulate codex
+```
+
+Windows PowerShell:
+
+```powershell
+.\carryon.exe simulate codex
+```
+
+4. Check the displayed provider, session ID, and project folder before answering `y`. Answer `n` if it is not the test session you intended.
+
+5. After the simulation, check its state and decisions:
+
+macOS / Linux:
+
+```sh
+./carryon status
+./carryon decisions
+```
+
+Windows PowerShell:
+
+```powershell
+.\carryon.exe status
+.\carryon.exe decisions
+```
+
+The run prints `SIMULATED` and records Gemini's decision. Gemini may resume unfinished work or skip a task that already looks complete or stuck.
 
 ## Use it every day
 
