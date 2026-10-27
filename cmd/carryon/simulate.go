@@ -41,7 +41,7 @@ func runService(ctx context.Context, paths config.Paths, args []string) error {
 		if err := service.Uninstall(ctx); err != nil {
 			return err
 		}
-		fmt.Println("Removed the CarryOn logon task.")
+		fmt.Println("Removed the CarryOn service.")
 		return nil
 	case "status":
 		state, err := service.Status(ctx)
