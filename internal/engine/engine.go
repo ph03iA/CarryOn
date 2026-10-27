@@ -98,6 +98,9 @@ func (e *Engine) Run(ctx context.Context, interval time.Duration) error {
 func (e *Engine) poll(ctx context.Context) []error {
 	var problems []error
 	for _, provider := range e.Providers {
+		if !e.Config.Watches(provider.Name()) {
+			continue
+		}
 		snapshot, err := provider.Read(ctx)
 		if err != nil {
 			e.logErr("%s usage read failed: %v", provider.Name(), err)

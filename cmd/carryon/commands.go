@@ -40,11 +40,8 @@ func assemble(db *store.DB, cfg config.Config, secrets config.Secrets, log *logx
 			CodexBin:  cfg.CodexBin,
 			Timeout:   time.Duration(cfg.TimeoutMinutes) * time.Minute,
 		},
-		Log: log,
-		Providers: []quota.Provider{
-			quota.Codex{Binary: cfg.CodexBin},
-			quota.Claude{Binary: cfg.ClaudeBin},
-		},
+		Log:       log,
+		Providers: watchedProviders(cfg),
 	}
 	if secrets.Resend != "" {
 		built.Sender = mail.NewResend(secrets.Resend)
@@ -52,11 +49,26 @@ func assemble(db *store.DB, cfg config.Config, secrets config.Secrets, log *logx
 	return built, nil
 }
 
-func runInit(_ context.Context, paths config.Paths, _ []string) error {
+func watchedProviders(cfg config.Config) []quota.Provider {
+	providers := make([]quota.Provider, 0, 2)
+	if cfg.Watches("codex") {
+		providers = append(providers, quota.Codex{Binary: cfg.CodexBin})
+	}
+	if cfg.Watches("claude") {
+		providers = append(providers, quota.Claude{Binary: cfg.ClaudeBin})
+	}
+	return providers
+}
+
+func runInit(_ context.Context, paths config.Paths, args []string) error {
 	if err := config.EnsureDir(paths.Dir); err != nil {
 		return err
 	}
 	cfg, err := config.Load(paths.Config)
+	if err != nil {
+		return err
+	}
+	cfg, err = providersAfterInit(cfg, args)
 	if err != nil {
 		return err
 	}
@@ -67,6 +79,7 @@ func runInit(_ context.Context, paths config.Paths, _ []string) error {
 		return err
 	}
 	fmt.Printf("CarryOn is set up in %s\n\n", paths.Dir)
+	fmt.Printf("Watching: %s\n", watchLabel(cfg.Providers))
 	fmt.Println("Next steps:")
 	fmt.Println("  1. Put your keys in", paths.Env)
 	fmt.Println("     RESEND_API_KEY=re_...")
@@ -145,6 +158,7 @@ func runStatus(_ context.Context, paths config.Paths, args []string) error {
 		return nil
 	}
 	fmt.Printf("CarryOn %s — state in %s\n", version, paths.Dir)
+	fmt.Printf("Watching: %s\n", watchLabel(cfg.Providers))
 	fmt.Printf("Recipient: %s  Sender: %s  Model: %s\n\n", cfg.Recipient, cfg.Sender, cfg.GeminiModel)
 	printIncidents(status.Incidents)
 	printResumes(status.Resumes)
@@ -208,4 +222,30 @@ func shortID(id string) string {
 		return id
 	}
 	return id[:12]
+}
+
+// providersAfterInit applies --providers, keeping the current value otherwise.
+func providersAfterInit(cfg config.Config, args []string) (config.Config, error) {
+	value, ok := parseFlag(args, "--providers")
+	if !ok {
+		return cfg, nil
+	}
+	providers, err := config.NormalizeProviders(value)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.Providers = providers
+	return cfg, nil
+}
+
+// watchLabel names the selected tools for status and init output.
+func watchLabel(providers string) string {
+	switch providers {
+	case "claude":
+		return "Claude Code"
+	case "codex":
+		return "Codex"
+	default:
+		return "Claude Code and Codex"
+	}
 }

@@ -25,11 +25,13 @@ type fakeProvider struct {
 	name     string
 	snapshot quota.Snapshot
 	err      error
+	reads    int
 }
 
 func (f *fakeProvider) Name() string { return f.name }
 
 func (f *fakeProvider) Read(context.Context) (quota.Snapshot, error) {
+	f.reads++
 	return f.snapshot, f.err
 }
 
@@ -881,5 +883,75 @@ func TestSimulateSendsSkipEmailBeforeReturning(t *testing.T) {
 	}
 	if h.runner.calls != 0 {
 		t.Fatalf("skip_done must not run the agent, got %d", h.runner.calls)
+	}
+}
+
+func TestClaudeOnlyNeverReadsCodex(t *testing.T) {
+	h := newHarness(t)
+	h.engine.Config.Providers = "claude"
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	codex := &fakeProvider{name: "codex", snapshot: quota.Snapshot{
+		Provider: "codex", AccountID: "acct", ObservedAt: h.now,
+		Windows: []quota.Window{{ID: "codex:primary", Label: "5-hour", UsedPercent: 0, ResetsAt: h.now.Add(time.Hour), Duration: 5 * time.Hour}},
+	}}
+	h.engine.Providers = []quota.Provider{h.provider, codex}
+
+	h.step(t)
+
+	if codex.reads != 0 {
+		t.Fatalf("claude-only config read codex %d time(s)", codex.reads)
+	}
+	if h.provider.reads != 1 {
+		t.Fatalf("claude should be read once, got %d", h.provider.reads)
+	}
+}
+
+func TestCodexOnlyNeverReadsClaude(t *testing.T) {
+	h := newHarness(t)
+	h.engine.Config.Providers = "codex"
+	h.provider.snapshot.Windows[0].UsedPercent = 100
+	codex := &fakeProvider{name: "codex", snapshot: quota.Snapshot{
+		Provider: "codex", AccountID: "acct", ObservedAt: h.now,
+		Windows: []quota.Window{{ID: "codex:primary", Label: "5-hour", UsedPercent: 0, ResetsAt: h.now.Add(time.Hour), Duration: 5 * time.Hour}},
+	}}
+	h.engine.Providers = []quota.Provider{h.provider, codex}
+
+	h.step(t)
+
+	if h.provider.reads != 0 {
+		t.Fatalf("codex-only config read claude %d time(s)", h.provider.reads)
+	}
+	if codex.reads != 1 {
+		t.Fatalf("codex should be read once, got %d", codex.reads)
+	}
+}
+
+func TestDisabledProviderIncidentIsClosed(t *testing.T) {
+	h := newHarness(t)
+	h.engine.Config.Providers = "claude"
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	incident := store.Incident{
+		Provider: "codex", AccountID: "acct", WindowID: "codex:primary",
+		WindowLabel: "5-hour", UsedPercent: 100, ResetAt: h.now.Add(-time.Minute),
+		State: store.IncidentAwaitingReset,
+	}
+	if _, err := h.db.CreateIncident(context.Background(), &incident); err != nil {
+		t.Fatal(err)
+	}
+
+	h.step(t)
+
+	incidents, err := h.db.Incidents(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(incidents) != 1 || incidents[0].State != store.IncidentSkipped || incidents[0].Reason != "provider disabled" {
+		t.Fatalf("disabled incident not closed: %+v", incidents)
+	}
+	if h.runner.calls != 0 {
+		t.Fatalf("disabled provider must not resume, got %d", h.runner.calls)
+	}
+	if len(h.sender.sent) != 0 {
+		t.Fatalf("disabled provider must not email: %v", h.subjects())
 	}
 }

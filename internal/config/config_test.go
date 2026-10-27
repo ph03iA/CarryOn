@@ -149,3 +149,60 @@ func TestDefaultGeminiModel(t *testing.T) {
 		t.Fatalf("default model is wrong: %s", got)
 	}
 }
+
+func TestDefaultProviders(t *testing.T) {
+	if got := Defaults().Providers; got != "both" {
+		t.Fatalf("default providers is wrong: %s", got)
+	}
+}
+
+func TestNormalizeProviders(t *testing.T) {
+	cases := map[string]string{
+		"":         "both",
+		"both":     "both",
+		"claude":   "claude",
+		"CODEX":    "codex",
+		" Claude ": "claude",
+	}
+	for input, want := range cases {
+		got, err := NormalizeProviders(input)
+		if err != nil || got != want {
+			t.Fatalf("%q: got (%q, %v) want %q", input, got, err, want)
+		}
+	}
+	if _, err := NormalizeProviders("gemini"); err == nil {
+		t.Fatal("want an error for an unknown provider")
+	}
+}
+
+func TestLoadRejectsUnknownProviders(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"providers":"gemini"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "providers") {
+		t.Fatalf("want a clear providers error, got %v", err)
+	}
+}
+
+func TestWatches(t *testing.T) {
+	cases := []struct {
+		providers string
+		provider  string
+		want      bool
+	}{
+		{"both", "claude", true},
+		{"both", "codex", true},
+		{"claude", "claude", true},
+		{"claude", "codex", false},
+		{"codex", "codex", true},
+		{"codex", "claude", false},
+	}
+	for _, testCase := range cases {
+		cfg := Config{Providers: testCase.providers}
+		if got := cfg.Watches(testCase.provider); got != testCase.want {
+			t.Fatalf("%s/%s: got %v want %v", testCase.providers, testCase.provider, got, testCase.want)
+		}
+	}
+}

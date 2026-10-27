@@ -14,6 +14,7 @@ const (
 	DefaultRecipient    = "prajwalchahande7@gmail.com"
 	DefaultSender       = "onboarding@resend.dev"
 	DefaultGeminiModel  = "gemini-3.5-flash-lite"
+	DefaultProviders    = "both"
 	DefaultPollSeconds  = 60
 	DefaultTimeoutMins  = 360
 	DefaultMaxResumes   = 2
@@ -30,6 +31,7 @@ const (
 
 // Config is the persisted, user-editable configuration.
 type Config struct {
+	Providers      string `json:"providers"`
 	Recipient      string `json:"recipient"`
 	Sender         string `json:"sender"`
 	GeminiModel    string `json:"gemini_model"`
@@ -45,6 +47,7 @@ type Config struct {
 // Defaults returns a configuration with every field set to a working value.
 func Defaults() Config {
 	return Config{
+		Providers:      DefaultProviders,
 		Recipient:      DefaultRecipient,
 		Sender:         DefaultSender,
 		GeminiModel:    DefaultGeminiModel,
@@ -59,6 +62,7 @@ func Defaults() Config {
 // Normalize fills empty fields with defaults and clamps unsafe values.
 func (c Config) Normalize() Config {
 	defaults := Defaults()
+	fill(&c.Providers, defaults.Providers)
 	fill(&c.Recipient, defaults.Recipient)
 	fill(&c.Sender, defaults.Sender)
 	fill(&c.GeminiModel, defaults.GeminiModel)
@@ -149,11 +153,21 @@ func Load(path string) (Config, error) {
 	if err := json.Unmarshal(data, &loaded); err != nil {
 		return Config{}, fmt.Errorf("parse config: %w", err)
 	}
+	providers, err := NormalizeProviders(loaded.Providers)
+	if err != nil {
+		return Config{}, err
+	}
+	loaded.Providers = providers
 	return loaded.Normalize(), nil
 }
 
 // Save writes config.json atomically with restrictive permissions.
 func Save(path string, cfg Config) error {
+	providers, err := NormalizeProviders(cfg.Providers)
+	if err != nil {
+		return err
+	}
+	cfg.Providers = providers
 	data, err := json.MarshalIndent(cfg.Normalize(), "", "  ")
 	if err != nil {
 		return err
@@ -170,6 +184,29 @@ func Save(path string, cfg Config) error {
 		return fmt.Errorf("replace config: %w", err)
 	}
 	return nil
+}
+
+// NormalizeProviders accepts claude, codex, or both.
+func NormalizeProviders(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "both":
+		return "both", nil
+	case "claude":
+		return "claude", nil
+	case "codex":
+		return "codex", nil
+	default:
+		return "", fmt.Errorf("providers must be claude, codex, or both, got %q", value)
+	}
+}
+
+// Watches reports whether a provider is enabled in this configuration.
+func (c Config) Watches(provider string) bool {
+	providers, err := NormalizeProviders(c.Providers)
+	if err != nil {
+		return true
+	}
+	return providers == "both" || providers == provider
 }
 
 // Secrets holds the two API keys CarryOn needs. They are never persisted.

@@ -26,6 +26,10 @@ func (e *Engine) advance(ctx context.Context) []error {
 		if incident.Simulated {
 			continue
 		}
+		if !e.Config.Watches(incident.Provider) {
+			problems = append(problems, e.closeIncident(ctx, incident, store.IncidentSkipped, "provider disabled"))
+			continue
+		}
 		if incident.ResetAt.After(e.now()) {
 			continue
 		}
