@@ -263,6 +263,8 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - **Emails after long downtime.** The outbox retries transient Resend failures up to eight times (about two hours). A machine that stays offline longer than that, or past Resend's 24-hour idempotency window, can lose or duplicate an event.
 - **Edits to already-untracked files.** The pre-run snapshot records untracked paths and excludes them, so later edits to a file that was already untracked are not listed in "files changed".
 - Process containment differs by platform: Windows uses a kill-on-close Job Object, while macOS and Linux use process groups and `SIGKILL`, with `Pdeathsig` on Linux. A child that deliberately leaves its process group can survive a Unix cleanup.
+- On Linux, `Pdeathsig` is a best-effort backstop: the kernel signals the child when the OS thread that created it exits, which can happen before CarryOn itself exits. The process-group kill on timeout, cancellation, and shutdown is the primary cleanup.
+- The macOS agent uses `launchctl load -w`, a legacy interface Apple still supports. The Linux unit uses `systemctl --user`, so it needs a running user systemd manager.
 - On Windows the logon task prefers `-LogonType S4U`, so it runs without a console window. If Windows needs admin rights or a "Log on as a batch job" policy, CarryOn falls back to an interactive logon task, which may briefly show a console window.
 - On macOS and Linux the service runs in the user's login session. It does not start before login and does not survive a logout.
 - On Windows, Smart App Control can block locally built unsigned executables. See Troubleshooting.
