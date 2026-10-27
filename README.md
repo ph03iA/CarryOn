@@ -2,7 +2,7 @@
 
 [Read the manual](https://ph03iA.github.io/CarryOn/)
 
-CarryOn keeps your Claude Code and Codex work going through usage limits. It runs in the background on Windows, checks plan usage every minute without spending any, waits for a confirmed reset, asks Gemini whether continuing is worthwhile, and resumes the session by ID. It emails you when a limit comes back and when a resumed run finishes — never when a limit runs out.
+CarryOn keeps your Claude Code and Codex work going through usage limits. It runs in the background on Windows, checks plan usage every minute without spending any, waits for a confirmed reset, asks Gemini whether continuing is worthwhile, and resumes the session by ID. It emails you once when a limit comes back — never when a limit runs out.
 
 It never sends a prompt while checking usage. It never reads Claude or Codex auth files.
 
@@ -15,7 +15,7 @@ It never sends a prompt while checking usage. It never reads Claude or Codex aut
 3. It finds the newest session log whose last real event is a usage-limit error. No email is sent at this point. If no session is found, it searches again at reset.
 4. At reset time it takes a fresh reading. The reset counts only when the reading is after the reset, under two minutes old, for the same account, with no window still at 100%.
 5. It asks Gemini for a decision, then resumes by session ID when told to.
-6. Once the reset is confirmed it sends one short email. The subject is `Claude Code is back: resuming <folder>`, `Claude Code is back: nothing to resume`, or `Claude Code is back: skipped <folder>`, with `Codex` in place of `Claude Code` when relevant. The body has a bold first sentence and short labelled lines: Project, Next step, Why, and a "Continue by hand" line with the resume command. When a resumed run finishes, a second email with the subject `Claude Code finished: <folder>` adds Result, Changed, and Agent said (at most 200 characters). Both emails go out as minimal HTML with a plain-text fallback.
+6. Once the reset is confirmed it sends one short email per limit. The subject is `Claude Code is back: resumed <folder>` or `Claude Code is back: no resume needed`, with `Codex` in place of `Claude Code` when relevant. The body has a bold first sentence and short labelled lines: Project, Next step, Why, and a "Continue by hand" line with the resume command when it resumed. A not-resumed email explains in plain words whether the task was already done, no session was cut off, you already continued it, the agent looked stuck, or Gemini gave no decision. There is no finish email; the post-run decision is stored and shown by `carryon decisions`. Emails go out as minimal HTML with a plain-text fallback.
 
 ## How the agent decides
 
@@ -162,8 +162,9 @@ By default CarryOn watches both tools. To watch one, run `carryon init --provide
 **Resend:**
 
 - Recipient, sender, subject, and the email body, in minimal HTML and as a plain-text fallback.
-- The body contains the folder name, the next step, the reason for the decision, up to five changed file names (then "+N more"), at most 200 characters of the agent's last message, and the "Continue by hand" resume command.
-- It contains no reset times, full paths, exit codes on success, "Sent by" lines, or test output.
+- When resumed: the folder name, the next step, the reason, and the "Continue by hand" resume command.
+- When not resumed: the folder name, if any, and a plain-word reason.
+- It contains no reset times, full paths, changed file names, agent messages, exit codes, or test output.
 
 CarryOn itself makes no other network calls. It never reads `~/.claude/.credentials.json`, `~/.codex/auth.json`, or any keychain entry.
 
@@ -189,7 +190,7 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - The cut-off search only accepts sessions written after the current window started, and retries once at reset time.
 - **Secrets cut at the clipping point.** The session tail is clipped by character count before redaction. A credential that straddles the cut can lose its recognisable prefix and survive; treat the excerpt as sensitive.
 - **Two simulations at once.** `simulate` has no lock, so two can run together, spend real Gemini and agent usage, and both try to resume the same session.
-- **A crash during the scan or the post-run Gemini call.** A crash before the incident is recorded is retried on the next sweep. A crash during the post-run Gemini call can leave the run recorded without its finish email; on restart the session may look already continued and be skipped.
+- **A crash during the scan or the post-run Gemini call.** A crash before the incident is recorded is retried on the next sweep. A crash during the post-run Gemini call can leave the run recorded without its post-run decision; on restart the session may look already continued and be skipped.
 - **Continuing during the Gemini call.** CarryOn checks for an external continuation before asking Gemini. If you continue the session while Gemini is deciding, CarryOn can still resume afterwards.
 - **Resuming a few minutes early.** A window still at 100% whose reset time has passed is treated as reset, because its reset is no longer in the future. CarryOn can therefore resume a few minutes before Claude reports the window as available, and the agent may hit the limit again immediately.
 - **Emails after long downtime.** The outbox retries transient Resend failures up to eight times (about two hours). A machine that stays offline longer than that, or past Resend's 24-hour idempotency window, can lose or duplicate an event.
@@ -267,12 +268,13 @@ Policy changes are recorded here as the build evolves.
 - **2026-10-26 — Simulate.** `carryon simulate` fakes only the limit and reset; Gemini, the agent, and email are real and labelled SIMULATED.
 - **2026-10-26 — No doctor command.** `status` and `decisions` cover inspection.
 - **2026-10-26 — Redaction covers AKIA and github_pat_.** Added to the existing pattern set.
-- **2026-10-26 — Email only when a limit comes back.** The run-out email and the separate resume-start email were removed. After a reset is confirmed, CarryOn sends exactly one "back" email saying what it did (resuming, nothing to resume, or skipped with a reason). The finish email and the 24-hour needs-you email remain. `simulate` follows the same rules and is labelled SIMULATED.
+- **2026-10-26 — Email only when a limit comes back.** The run-out email and the separate resume-start email were removed. After a reset is confirmed, CarryOn sends exactly one "back" email saying what it did (resuming, nothing to resume, or skipped with a reason). The 24-hour needs-you email remains. `simulate` follows the same rules and is labelled SIMULATED.
 - **2026-10-26 — Global single-instance mutex.** `watch` takes `Global\CarryOn`, so an S4U watcher in another Windows session still blocks a second watcher. `simulate` no longer takes the lock; the watcher skips simulated incidents.
 - **2026-10-26 — No old-database upgrades.** There are no released databases, so `store.Open` creates the current schema and no longer runs silent ALTER migrations.
 - **2026-10-26 — Diff from the pre-run HEAD.** A clean folder records `HEAD` before the run, so commits made by the agent appear in "files changed".
 - **2026-10-27 - gemini-3.5-flash-lite with a thinking cap.** The default model is `gemini-3.5-flash-lite`, and each decision sets a 128-token thinking budget. If the model rejects the budget, CarryOn retries without it, and every Gemini call logs its duration.
-- **2026-10-27 - Short HTML and text emails.** Subjects name the tool and folder, and the body uses short bold labels: Project, Next step, Why, Changed, Agent said, and a Continue by hand command. Resend receives both HTML and a plain-text fallback.
+- **2026-10-27 - Short HTML and text emails.** Subjects name the tool and outcome, and the body uses short bold labels: Project, Next step, Why, and a Continue by hand command when resumed. Resend receives both HTML and a plain-text fallback.
 - **2026-10-27 - Shorter commands.** `simulate` picks the newest session, `log` follows the log, and `reset` deletes state after a confirmation. `--session` and `--yes` keep the explicit paths available.
 - **2026-10-27 - Provider selection.** `providers` in `config.json` accepts `claude`, `codex`, or `both`; `init --providers` sets it. The watcher reads only the selected tools and closes incidents for a disabled tool without resuming.
 - **2026-10-27 - No default recipient.** A new config starts with an empty recipient. `init --email` sets it, existing configs keep theirs, and without one emails stay queued with a single log warning.
+- **2026-10-27 - One email per limit.** The finish email was removed. The back email now says "resumed <folder>" or "no resume needed", with the next step and resume command only when it resumed. The post-run decision is still stored and shown by `carryon decisions`.

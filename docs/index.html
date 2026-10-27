@@ -386,7 +386,7 @@ footer .colophon { flex: 1 1 100%; }
   <section class="hero wrap" aria-labelledby="title">
     <p class="kicker">Usage limits, handled locally</p>
     <h1 id="title">Keep your work going when the limit runs out</h1>
-    <p class="lede">CarryOn is a small Windows program that watches your Claude Code and Codex plan usage every minute without sending a prompt. When a limit runs out it records the incident, waits for the reset, asks Gemini whether the cut-off session is worth continuing, and resumes that session by its ID. You get an email when the limit comes back and when the resumed run finishes.</p>
+    <p class="lede">CarryOn is a small Windows program that watches your Claude Code and Codex plan usage every minute without sending a prompt. When a limit runs out it records the incident, waits for the reset, asks Gemini whether the cut-off session is worth continuing, and resumes that session by its ID. You get one email when the limit comes back, not when it runs out.</p>
     <p class="hero-meta">Windows 10 or 11. Go 1.26 or newer. The watcher and the agents run on your own machine.</p>
   </section>
 
@@ -410,9 +410,9 @@ footer .colophon { flex: 1 1 100%; }
         <li><p><strong>The limit hits 100 percent.</strong> CarryOn records one incident for that provider, window, and reset time, and notes the session log that the limit cut off. No email is sent when a limit runs out.</p></li>
         <li><p><strong>The reset is confirmed with a fresh reading.</strong> The reset counts only when a new reading is taken after the reset time, is under two minutes old, is for the same account, and shows no window still at 100 percent with a future reset.</p></li>
         <li><p><strong>Gemini decides.</strong> The tail of the cut-off session, the folder, the limit, and the reset time go to Gemini, which returns one decision: resume, skip because the task looks done, or skip because the agent looked stuck.</p></li>
-        <li><p><strong>The back email goes out.</strong> One short email with a subject like <code>Claude Code is back: resuming &lt;folder&gt;</code> says what CarryOn did: resumed, nothing to resume, or skipped with a reason. It lists short bold labels: Project, Next step, Why, and a Continue by hand command.</p></li>
+        <li><p><strong>The back email goes out.</strong> One short email per limit with the subject <code>Claude Code is back: resumed &lt;folder&gt;</code> or <code>Claude Code is back: no resume needed</code>. It lists short bold labels: Project, Next step, Why, and a Continue by hand command when it resumed.</p></li>
         <li><p><strong>The session resumes by ID.</strong> The agent runs in the session's folder against that session's ID, so it continues the same conversation rather than the newest one in the folder.</p></li>
-        <li><p><strong>The finish email reports the result.</strong> When the resumed run ends, an email with the subject <code>Claude Code finished: &lt;folder&gt;</code> adds bold labels for Result, Changed, and Agent said (up to 200 characters). Both emails go out as minimal HTML with a plain-text fallback.</p></li>
+        <li><p><strong>There is no finish email.</strong> The post-run Gemini decision is stored and shown by <code>carryon decisions</code>. The back email goes out as minimal HTML with a plain-text fallback.</p></li>
       </ol>
     </div>
   </section>
@@ -432,12 +432,12 @@ footer .colophon { flex: 1 1 100%; }
         <div>
           <dt>Skip because the task looks done</dt>
           <dd>The work appears complete, so no usage is spent on a resume.</dd>
-          <dd class="example">The last assistant message says the change is complete and the tests pass. The reply is <code>skip_done</code>, and the back email says: Skipped: already done.</dd>
+          <dd class="example">The last assistant message says the change is complete and the tests pass. The reply is <code>skip_done</code>, and the back email says: No resume was needed. Why: the task was already done.</dd>
         </div>
         <div>
           <dt>Skip because the agent looked stuck</dt>
           <dd>The agent was looping or blocked, so a person should look instead.</dd>
-          <dd class="example">The log shows the same file edited five times with the same error. The reply is <code>skip_stuck</code>, and the back email says: Skipped: looked stuck.</dd>
+          <dd class="example">The log shows the same file edited five times with the same error. The reply is <code>skip_stuck</code>, and the back email says: No resume was needed. Why: the agent looked stuck.</dd>
         </div>
       </dl>
     </div>
@@ -451,7 +451,7 @@ footer .colophon { flex: 1 1 100%; }
     <div class="part-body">
       <figure>
         <figcaption>Example: the back email</figcaption>
-        <pre><code>Subject: Claude Code is back: resuming carryon-demo-a2
+        <pre><code>Subject: Claude Code is back: resumed carryon-demo-a2
 
 Claude Code is back. CarryOn resumed your session.
 
@@ -613,8 +613,8 @@ GEMINI_API_KEY=...</code></pre>
         </div>
         <div>
           <h3>Sent to Resend</h3>
-          <p>Resend receives the recipient, the sender, the subject, and the body, in minimal HTML with a plain-text fallback. The body holds the folder name, the next step, the reason, up to five changed file names (then "+N more"), at most 200 characters of the agent's last message, and the "Continue by hand" command.</p>
-          <p>It contains no reset times, full paths, exit codes on success, "Sent by" lines, or test output. Email bodies are redacted again before they are sent.</p>
+          <p>Resend receives the recipient, the sender, the subject, and the body, in minimal HTML with a plain-text fallback. When CarryOn resumed, the body holds the folder name, the next step, the reason, and the "Continue by hand" command. When it did not resume, the body holds the folder name, if any, and a plain-word reason.</p>
+          <p>It contains no reset times, full paths, changed file names, agent messages, exit codes, or test output. Email bodies are redacted again before they are sent.</p>
         </div>
         <div>
           <h3>Stays on this machine</h3>
