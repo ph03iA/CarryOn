@@ -182,6 +182,11 @@ func decodeClaude(initRaw, usageRaw json.RawMessage, now time.Time) (Snapshot, e
 	if err := json.Unmarshal(usageRaw, &usage); err != nil {
 		return Snapshot{}, errors.New("claude returned unreadable usage data")
 	}
+	if usage.RateLimitsAvailable && usage.RateLimits == nil {
+		// Seen live: Claude Code sometimes answers without the numbers when asked
+		// often. The last good reading stays in place until the next check.
+		return Snapshot{}, errors.New("claude returned no usage numbers this time; will retry")
+	}
 	windows := claudeWindows(usage)
 	if len(windows) == 0 {
 		return Snapshot{}, errors.New("claude reported no plan limits for this account")

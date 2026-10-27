@@ -182,10 +182,10 @@ func TestBackNoResumeNeeded(t *testing.T) {
 
 func TestNeedsYouEmail(t *testing.T) {
 	subject, text, markup := Render(Event{Kind: KindNeedsYou, Provider: "claude", SessionCwd: demoFolder})
-	if subject != "CarryOn needs you: Claude Code reset not confirmed" {
+	if subject != "CarryOn needs you: Claude Code reset missed" {
 		t.Fatalf("unexpected subject: %s", subject)
 	}
-	if !strings.Contains(text, "CarryOn needs you. The Claude Code reset was not confirmed within 24 hours.") {
+	if !strings.Contains(text, "CarryOn needs you. The Claude Code limit reset more than 24 hours ago while CarryOn was not running") {
 		t.Fatalf("unexpected text:\n%s", text)
 	}
 	if !strings.Contains(markup, "<b>CarryOn needs you.</b>") {

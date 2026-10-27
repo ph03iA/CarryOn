@@ -2,6 +2,9 @@ package engine
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,18 +16,21 @@ import (
 	"github.com/ph03iA/CarryOn/internal/store"
 )
 
-// prepareCycle confirms the reset and returns the session to resume. ok is
-// false when the reset is not confirmed yet, so another incident can be tried.
+// prepareCycle returns the session to resume once the limit's reset time has
+// passed. The provider reported that time itself when the limit was hit, so no
+// fresh reading is needed: a usage check can fail or come back empty. ok is
+// false when there is nothing to run.
 func (e *Engine) prepareCycle(ctx context.Context, incident store.Incident) (store.Incident, session.Session, bool, error) {
 	if !incident.Simulated {
-		confirmed, err := e.confirmReset(ctx, incident)
+		until, err := e.stillUsedUpUntil(ctx, incident)
 		if err != nil {
-			e.logErr("confirm reset: %v", err)
-			return incident, session.Session{}, false, nil
+			return incident, session.Session{}, false, err
 		}
-		if !confirmed {
-			e.logf("%s reset not confirmed yet; will retry", incident.Provider)
-			return incident, session.Session{}, false, nil
+		if !until.IsZero() {
+			// That limit has its own incident, which emails when it resets.
+			reason := "another limit is still used up until " + until.Local().Format("Jan 2 3:04 PM")
+			e.logf("%s %s limit reset, but %s", incident.Provider, incident.WindowLabel, reason)
+			return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentSkipped, reason)
 		}
 	}
 	if incident.SessionID == "" {
@@ -51,7 +57,7 @@ func (e *Engine) prepareCycle(ctx context.Context, incident store.Incident) (sto
 			return incident, session.Session{}, false, e.skipContinued(ctx, incident, found)
 		}
 	}
-	if err := e.DB.UpdateIncident(ctx, incident.ID, incidentUpdate(incident, store.IncidentDeciding, "reset confirmed")); err != nil {
+	if err := e.DB.UpdateIncident(ctx, incident.ID, incidentUpdate(incident, store.IncidentDeciding, "reset time passed")); err != nil {
 		return incident, session.Session{}, false, err
 	}
 	return incident, found, true, nil
@@ -84,52 +90,31 @@ func (e *Engine) sessionFor(incident store.Incident) (session.Session, error) {
 	}, nil
 }
 
-// confirmReset requires a fresh reading after the reset with no limit still hit.
-func (e *Engine) confirmReset(ctx context.Context, incident store.Incident) (bool, error) {
-	provider := e.provider(incident.Provider)
-	if provider == nil {
-		return false, fmt.Errorf("no reader for %s", incident.Provider)
+// stillUsedUpUntil returns the latest reset time of any limit that the last
+// good reading showed as used up and not yet reset, or zero when none is.
+// Usage never drops inside a window, so an old reading is still proof.
+func (e *Engine) stillUsedUpUntil(ctx context.Context, incident store.Incident) (time.Time, error) {
+	saved, err := e.DB.Snapshot(ctx, incident.Provider)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, nil
 	}
-	snapshot, err := provider.Read(ctx)
 	if err != nil {
-		return false, err
+		return time.Time{}, err
 	}
-	if err := e.saveSnapshot(ctx, snapshot); err != nil {
-		return false, err
+	var snapshot quota.Snapshot
+	if err := json.Unmarshal([]byte(saved.Data), &snapshot); err != nil {
+		return time.Time{}, fmt.Errorf("read saved %s usage: %w", incident.Provider, err)
 	}
-	return e.resetConfirmed(incident, snapshot, e.now()), nil
-}
-
-func (e *Engine) resetConfirmed(incident store.Incident, snapshot quota.Snapshot, now time.Time) bool {
 	if snapshot.AccountID != incident.AccountID {
-		return false
+		return time.Time{}, nil
 	}
-	if snapshot.ObservedAt.Before(incident.ResetAt) {
-		return false
-	}
-	if now.Sub(snapshot.ObservedAt) > 2*time.Minute {
-		return false
-	}
-	if anyWindowExhausted(snapshot, now) {
-		return false
-	}
-	return usageAllowed(snapshot)
-}
-
-func anyWindowExhausted(snapshot quota.Snapshot, now time.Time) bool {
+	var until time.Time
 	for _, window := range snapshot.Windows {
-		if window.UsedPercent >= 100 && window.ResetsAt.After(now) {
-			return true
+		if window.UsedPercent >= 100 && window.ResetsAt.After(e.now()) && window.ResetsAt.After(until) {
+			until = window.ResetsAt
 		}
 	}
-	return false
-}
-
-func usageAllowed(snapshot quota.Snapshot) bool {
-	if snapshot.Provider != "codex" {
-		return true
-	}
-	return snapshot.OrdinaryUsageAllowed != nil && *snapshot.OrdinaryUsageAllowed
+	return until, nil
 }
 
 // skipContinued records that something else already continued the session.

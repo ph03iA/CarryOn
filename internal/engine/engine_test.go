@@ -208,19 +208,23 @@ func TestLimitHitSendsNoEmailAndRecordsSession(t *testing.T) {
 	}
 }
 
-func TestResetConfirmationRequiresFreshReading(t *testing.T) {
+func TestResetActsWithoutAFreshReading(t *testing.T) {
 	h := newHarness(t)
 	h.step(t)
 
-	// Move time past the reset but keep the stale reading from before it.
+	// The reset time passes, but every usage check now fails, as when Claude
+	// Code answers without its numbers.
 	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
-	h.provider.snapshot.ObservedAt = h.now.Add(-time.Minute)
-	h.provider.snapshot.Windows[0].UsedPercent = 0
-	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
-	h.step(t)
+	h.provider.err = errors.New("claude returned no usage numbers this time; will retry")
+	if err := h.engine.Step(context.Background()); err == nil {
+		t.Fatal("the failed usage check should still be reported")
+	}
 
-	if h.runner.calls != 0 {
-		t.Fatal("a stale reading must not confirm the reset")
+	if h.runner.calls != 1 {
+		t.Fatalf("the reported reset time is enough to resume, got %d runs", h.runner.calls)
+	}
+	if countBack(h.sender.sent) != 1 {
+		t.Fatalf("want one back email, got %v", h.subjects())
 	}
 }
 
@@ -751,29 +755,29 @@ func TestConfirmedResetSendsOneBackEmailWhenStuck(t *testing.T) {
 	}
 }
 
-func TestUnconfirmedResetSendsNothingUntil24Hours(t *testing.T) {
+func TestStillUsedUpLimitWaitsForItsLaterReset(t *testing.T) {
 	h := newHarness(t)
 	h.step(t)
-	if len(h.sender.sent) != 0 {
-		t.Fatalf("a limit hit must not email: %v", h.subjects())
-	}
 
-	// The reset time passes but the limit is still exhausted.
+	// The reset time passes, but the last reading shows the limit used up
+	// again with a later reset, as when another limit is still full.
+	later := h.now.Add(10 * time.Hour)
 	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
 	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
-	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(10 * time.Hour)
+	h.provider.snapshot.Windows[0].ResetsAt = later
 	h.step(t)
-	if len(h.sender.sent) != 0 {
-		t.Fatalf("an unconfirmed reset must not email: %v", h.subjects())
+	if len(h.sender.sent) != 0 || h.runner.calls != 0 {
+		t.Fatalf("must not email or resume while a limit is still used up: %v, runs=%d", h.subjects(), h.runner.calls)
 	}
 
-	h.engine.Now = func() time.Time { return h.now.Add(25 * time.Hour) }
-	h.step(t)
-	if len(h.sender.sent) != 1 {
-		t.Fatalf("want one needs-you email, got %v", h.subjects())
+	// At the later reset, exactly one back email goes out.
+	h.engine.Now = func() time.Time { return later.Add(time.Minute) }
+	h.provider.err = errors.New("claude returned no usage numbers this time; will retry")
+	if err := h.engine.Step(context.Background()); err == nil {
+		t.Fatal("the failed usage check should still be reported")
 	}
-	if !strings.Contains(h.sender.sent[0].Subject, "needs you") || !strings.Contains(h.sender.sent[0].Body, "24 hours") {
-		t.Fatalf("unexpected expiry email: %s\n%s", h.sender.sent[0].Subject, h.sender.sent[0].Body)
+	if countBack(h.sender.sent) != 1 {
+		t.Fatalf("want one back email at the later reset, got %v", h.subjects())
 	}
 }
 

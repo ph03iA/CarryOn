@@ -3,6 +3,7 @@ package quota
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -77,6 +78,18 @@ func TestClaudeReadRejectsMissingLimits(t *testing.T) {
 	claude := Claude{Binary: fakeBinary(t), Env: fakeEnv("claude_no_limits"), Timeout: 30 * time.Second}
 	if _, err := claude.Read(context.Background()); err == nil {
 		t.Fatal("want an error when no plan limits are reported")
+	}
+}
+
+func TestDecodeClaudeTreatsMissingNumbersAsTemporary(t *testing.T) {
+	init := []byte(`{"account":{"email":"a@b.c"}}`)
+	empty := []byte(`{"rate_limits_available":true,"subscription_type":"pro"}`)
+	if _, err := decodeClaude(init, empty, time.Now()); err == nil || !strings.Contains(err.Error(), "will retry") {
+		t.Fatalf("an empty reply must be a temporary error, got %v", err)
+	}
+	noPlan := []byte(`{"rate_limits_available":false}`)
+	if _, err := decodeClaude(init, noPlan, time.Now()); err == nil || !strings.Contains(err.Error(), "no plan limits") {
+		t.Fatalf("an account without plan limits must say so, got %v", err)
 	}
 }
 

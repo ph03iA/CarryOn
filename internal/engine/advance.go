@@ -36,7 +36,7 @@ func (e *Engine) advance(ctx context.Context) []error {
 		if e.now().Sub(incident.ResetAt) > 24*time.Hour {
 			_ = e.sendNeedsYou(ctx, incident)
 			problems = append(problems, e.closeIncident(ctx, incident, store.IncidentBlocked,
-				"the reset was not confirmed within 24 hours"))
+				"the reset passed more than 24 hours ago while CarryOn was not running"))
 			continue
 		}
 		prepared, found, ok, err := e.prepareCycle(ctx, incident)

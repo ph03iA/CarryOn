@@ -66,7 +66,7 @@ func subjectFor(event Event) string {
 		}
 		return fmt.Sprintf("%s is back: no resume needed", provider)
 	case KindNeedsYou:
-		return fmt.Sprintf("CarryOn needs you: %s reset not confirmed", provider)
+		return fmt.Sprintf("CarryOn needs you: %s reset missed", provider)
 	default:
 		return "CarryOn notification"
 	}
@@ -134,7 +134,7 @@ func backReason(event Event) string {
 
 func needsYouLines(event Event) []line {
 	provider := providerName(event.Provider)
-	lines := []line{firstLine("CarryOn needs you.", " The "+provider+" reset was not confirmed within 24 hours.")}
+	lines := []line{firstLine("CarryOn needs you.", " The "+provider+" limit reset more than 24 hours ago while CarryOn was not running, so it did not resume anything.")}
 	addProject(&lines, event)
 	return lines
 }

@@ -189,17 +189,6 @@ func (e *Engine) announceIncident(ctx context.Context, incident store.Incident) 
 	return e.DB.UpdateIncident(ctx, incident.ID, update)
 }
 
-// advance starts the next due resume, in the background unless synchronous.
-// provider returns the reader for a provider name.
-func (e *Engine) provider(name string) quota.Provider {
-	for _, provider := range e.Providers {
-		if provider.Name() == name {
-			return provider
-		}
-	}
-	return nil
-}
-
 // enqueue renders and stores one email event.
 func (e *Engine) enqueue(ctx context.Context, eventKey string, event mail.Event) error {
 	subject, body, markup := mail.Render(event)

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CarryOn: a manual for resuming work through usage limits</title>
-<meta name="description" content="CarryOn is a local agent that watches Claude Code and Codex usage, waits for a confirmed reset, asks Gemini whether to continue, and resumes the session by ID.">
+<meta name="description" content="CarryOn is a local agent that watches Claude Code and Codex usage, waits for the reported reset, asks Gemini whether to continue, and resumes the session by ID.">
 <meta name="theme-color" content="#f3efe4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1c1a17" media="(prefers-color-scheme: dark)">
 <style>
@@ -372,7 +372,7 @@ footer .colophon { flex: 1 1 100%; }
       <h2 id="what-title">What CarryOn does</h2>
     </div>
     <div class="part-body prose">
-      <p>CarryOn reads plan usage from the tools you already use, with no prompt and no cost. A window that reaches 100 percent becomes one recorded incident, and the session that the limit cut off is identified from the local session logs. When the limit resets, CarryOn confirms the reset with a fresh reading, asks Gemini for a single decision, and, if the decision is to continue, runs the provider's own resume command against that session ID in the session's own folder. Incidents, resumes, decisions, and the email outbox are written to a local SQLite database, every decision is logged with its reason, and the two events worth knowing about, the limit coming back and a resumed run finishing, arrive by email.</p>
+      <p>CarryOn reads plan usage from the tools you already use, with no prompt and no cost. A window that reaches 100 percent becomes one recorded incident, and the session that the limit cut off is identified from the local session logs. When the reset time the tool reported has passed, CarryOn asks Gemini for a single decision, and, if the decision is to continue, runs the provider's own resume command against that session ID in the session's own folder. Incidents, resumes, decisions, and the email outbox are written to a local SQLite database, every decision is logged with its reason, and one email tells you when the limit is back and what CarryOn did about it.</p>
     </div>
   </section>
 
@@ -384,7 +384,7 @@ footer .colophon { flex: 1 1 100%; }
     <div class="part-body">
       <ol class="steps">
         <li><p><strong>The limit hits 100 percent.</strong> CarryOn records one incident for that provider, window, and reset time, and notes the session log that the limit cut off. No email is sent when a limit runs out.</p></li>
-        <li><p><strong>The reset is confirmed with a fresh reading.</strong> The reset counts only when a new reading is taken after the reset time, is under two minutes old, is for the same account, and shows no window still at 100 percent with a future reset.</p></li>
+        <li><p><strong>The reset time comes from the tool.</strong> When the limit hit 100 percent, the tool reported when it resets. Once that time passes, CarryOn acts without asking again, because a usage check can fail or come back empty. It only waits while the last good reading shows another limit, such as the weekly one, still at 100 percent.</p></li>
         <li><p><strong>Gemini decides.</strong> The tail of the cut-off session, the folder, the limit, and the reset time go to Gemini, which returns one decision: resume, skip because the task looks done, or skip because the agent looked stuck.</p></li>
         <li><p><strong>The back email goes out.</strong> One short email per limit with the subject <code>Claude Code is back: resumed &lt;folder&gt;</code> or <code>Claude Code is back: no resume needed</code>. It lists short bold labels: Project, Next step, Why, and a Continue by hand command when it resumed.</p></li>
         <li><p><strong>The session resumes by ID.</strong> The agent runs in the session's folder against that session's ID, so it continues the same conversation rather than the newest one in the folder.</p></li>
@@ -467,7 +467,7 @@ Emails (1)
     </div>
     <div class="part-body">
       <ul class="plain">
-        <li>A reset counts only after a fresh reading taken after the reset time, under two minutes old, for the same account, with no window still at 100 percent.</li>
+        <li>A reset counts once the time the tool reported has passed and no other limit is still at 100 percent in the last good reading.</li>
         <li>Resumes use the session ID, and CarryOn skips a session that was already continued after the cut-off.</li>
         <li>Each limit hit allows at most two resumes for its cut-off session.</li>
         <li>Claude, Codex, and the usage probes run in a kill-on-close sandbox: a Windows Job Object, or a process group that receives <code>SIGKILL</code> on macOS and Linux.</li>
@@ -567,7 +567,7 @@ RESEND_API_KEY=</code></pre>
           <p>Windows PowerShell:</p>
           <pre><code id="cmd-decisions-windows">.\carryon.exe decisions</code></pre>
           <button class="copy" type="button" data-target="cmd-decisions-windows">Copy</button>
-          <p>CarryOn polls every minute. Once a fresh usage reading confirms the reset, Gemini decides whether to resume the unfinished task or skip it. A resume is not guaranteed at the exact reset minute.</p>
+          <p>CarryOn polls every minute. Within a minute after the reset time, Gemini decides whether to resume the unfinished task or skip it.</p>
         </div></li>
       </ol>
 

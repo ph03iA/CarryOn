@@ -2,7 +2,7 @@
 
 [Read the manual](https://ph03iA.github.io/CarryOn/)
 
-CarryOn keeps your Claude Code and Codex work going through usage limits. It runs in the background on Windows, macOS, and Linux, checks plan usage every minute without spending any, waits for a confirmed reset, asks Gemini whether continuing is worthwhile, and resumes the session by ID. It emails you once when a limit comes back — never when a limit runs out.
+CarryOn keeps your Claude Code and Codex work going through usage limits. It runs in the background on Windows, macOS, and Linux, checks plan usage every minute without spending any, waits for the reset time the tool reported, asks Gemini whether continuing is worthwhile, and resumes the session by ID. It emails you once when a limit comes back — never when a limit runs out.
 
 It never sends a prompt while checking usage. It never reads Claude or Codex auth files.
 
@@ -13,9 +13,9 @@ It never sends a prompt while checking usage. It never reads Claude or Codex aut
    - **Claude Code:** the `get_usage` control request in stream-json mode, the same numbers behind `/usage`.
 2. A window at 100% becomes one incident, recorded once per provider + window + reset time.
 3. It finds the newest session log whose last real event is a usage-limit error. No email is sent at this point. If no session is found, it searches again at reset.
-4. At reset time it takes a fresh reading. The reset counts only when the reading is after the reset, under two minutes old, for the same account, with no window still at 100%.
+4. When the limit hit 100%, the tool also reported when it resets. Once that time passes, CarryOn acts without asking again, because a usage check can fail or come back empty. It only waits if the last good reading still shows a limit at 100% with a later reset (for example, the weekly limit); that limit has its own incident and email.
 5. It asks Gemini for a decision, then resumes by session ID when told to.
-6. Once the reset is confirmed it sends one short email per limit. The subject is `Claude Code is back: resumed <folder>` or `Claude Code is back: no resume needed`, with `Codex` in place of `Claude Code` when relevant. The body has a bold first sentence and short labelled lines: Project, Next step, Why, and a "Continue by hand" line with the resume command when it resumed. A not-resumed email explains in plain words whether the task was already done, no session was cut off, you already continued it, the agent looked stuck, or Gemini gave no decision. There is no finish email; the post-run decision is stored and shown by `carryon decisions`. Emails go out as minimal HTML with a plain-text fallback.
+6. Once the reset time has passed it sends one short email per limit. The subject is `Claude Code is back: resumed <folder>` or `Claude Code is back: no resume needed`, with `Codex` in place of `Claude Code` when relevant. The body has a bold first sentence and short labelled lines: Project, Next step, Why, and a "Continue by hand" line with the resume command when it resumed. A not-resumed email explains in plain words whether the task was already done, no session was cut off, you already continued it, the agent looked stuck, or Gemini gave no decision. There is no finish email; the post-run decision is stored and shown by `carryon decisions`. Emails go out as minimal HTML with a plain-text fallback.
 
 ## How the agent decides
 
@@ -204,7 +204,7 @@ Windows PowerShell:
 .\carryon.exe decisions
 ```
 
-CarryOn polls every minute. Once a fresh usage reading confirms the reset, Gemini decides whether to resume the unfinished task or skip it. A resume is not guaranteed at the exact reset minute.
+CarryOn polls every minute. Within a minute after the reset time, Gemini decides whether to resume the unfinished task or skip it.
 
 ## Simulation: test a resume
 
@@ -480,4 +480,5 @@ Policy changes are recorded here as the build evolves.
 - **2026-10-27 - Provider selection.** `providers` in `config.json` accepts `claude`, `codex`, or `both`; `init --providers` sets it. The watcher reads only the selected tools and closes incidents for a disabled tool without resuming.
 - **2026-10-27 - No default recipient.** A new config starts with an empty recipient. `init --email` sets it, existing configs keep theirs, and without one emails stay queued with a single log warning.
 - **2026-10-27 - One email per limit.** The finish email was removed. The back email now says "resumed <folder>" or "no resume needed", with the next step and resume command only when it resumed. The post-run decision is still stored and shown by `carryon decisions`.
+- **2026-10-27 - Trust the reported reset time.** The first real limit hit showed that Claude Code's usage request often answers without its numbers when asked every minute, so a required fresh reading could block the back email for hours. CarryOn now acts once the reset time the tool reported has passed, waiting only while the last good reading shows another limit still at 100%. An empty usage reply is logged as temporary, not as "no plan limits". The 24-hour "needs you" email now only covers a reset that passed while CarryOn was not running.
 - **2026-10-27 - Cross-platform.** CarryOn runs on Windows, macOS, and Linux. `single` keeps the global mutex on Windows and uses a state-directory `flock` elsewhere; `service` installs a Scheduled Task, a launch agent, or a systemd user unit; `winjob` keeps Job Objects on Windows and uses a process group with `SIGKILL` (plus `Pdeathsig` on Linux) elsewhere.
