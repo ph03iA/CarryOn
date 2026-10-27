@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 4
+const schemaVersion = 5
 
 // DB is the SQLite-backed state store.
 type DB struct {
@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS emails (
   kind          TEXT NOT NULL,
   subject       TEXT NOT NULL,
   body          TEXT NOT NULL,
+  html          TEXT NOT NULL DEFAULT '',
   state         TEXT NOT NULL DEFAULT 'pending',
   attempts      INTEGER NOT NULL DEFAULT 0,
   first_attempt INTEGER NOT NULL DEFAULT 0,

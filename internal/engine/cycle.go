@@ -31,24 +31,24 @@ func (e *Engine) prepareCycle(ctx context.Context, incident store.Incident) (sto
 	if incident.SessionID == "" {
 		attached, err := e.attachCutOffSession(ctx, incident)
 		if err != nil {
-			_ = e.sendBack(ctx, incident, "nothing to resume", "", err.Error())
+			_ = e.sendBack(ctx, incident, "none", "", err.Error())
 			return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
 		}
 		incident = attached
 	}
 	found, err := e.sessionFor(incident)
 	if err != nil {
-		_ = e.sendBack(ctx, incident, "nothing to resume", "", err.Error())
+		_ = e.sendBack(ctx, incident, "none", "", err.Error())
 		return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentSkipped, err.Error())
 	}
 	if _, interrupted := e.interruptedResume(ctx, incident); !interrupted {
 		continued, err := e.Scanner.Continued(found)
 		if err != nil {
-			_ = e.sendBack(ctx, incident, "skipped: could not read the session log", "", err.Error())
+			_ = e.sendBack(ctx, incident, "skip_error", "", err.Error())
 			return incident, session.Session{}, false, e.closeIncident(ctx, incident, store.IncidentBlocked, "could not read the session log: "+err.Error())
 		}
 		if continued {
-			_ = e.sendBack(ctx, incident, "skipped: the session was already continued", "", "")
+			_ = e.sendBack(ctx, incident, "skip_continued", "", "the session was already continued after the cut-off")
 			return incident, session.Session{}, false, e.skipContinued(ctx, incident, found)
 		}
 	}
@@ -163,15 +163,15 @@ func (e *Engine) decideAndResume(ctx context.Context, incident store.Incident, f
 	}
 	switch result.Action {
 	case decision.ActionResume:
-		if err := e.sendBack(ctx, incident, "resuming your session in "+found.Cwd, decision.ResumePrompt(result.Prompt), result.Reason); err != nil {
+		if err := e.sendBack(ctx, incident, "resume", result.Prompt, result.Reason); err != nil {
 			return err
 		}
 		return e.resumeLoop(ctx, incident, found, result)
 	case decision.ActionSkipDone:
-		_ = e.sendBack(ctx, incident, "skipped: the task already looked done", "", result.Reason)
+		_ = e.sendBack(ctx, incident, "skip_done", "", result.Reason)
 		return e.closeIncident(ctx, incident, store.IncidentSkipped, result.Reason)
 	default:
-		_ = e.sendBack(ctx, incident, "skipped: the agent looked stuck", "", result.Reason)
+		_ = e.sendBack(ctx, incident, "skip_stuck", "", result.Reason)
 		return e.closeIncident(ctx, incident, store.IncidentBlocked, result.Reason)
 	}
 }
@@ -259,8 +259,8 @@ func (e *Engine) postDecision(ctx context.Context, incident store.Incident, foun
 		Kind: mail.KindResumeFinish, Provider: incident.Provider, Action: result.Action,
 		Reason: result.Reason, SessionID: found.ID, SessionCwd: found.Cwd,
 		ExitCode: outcome.ExitCode, TimedOut: outcome.TimedOut,
-		LastMessage: outcome.LastMessage, Files: outcome.Files, TestOutput: outcome.TestOutput,
-		Simulated: incident.Simulated, Now: e.now(),
+		LastMessage: outcome.LastMessage, Files: outcome.Files,
+		Simulated: incident.Simulated,
 	}); err != nil {
 		return decision.Result{}, err
 	}
@@ -294,7 +294,7 @@ func (e *Engine) blockOnDecision(ctx context.Context, incident store.Incident, s
 		return err
 	}
 	if stage == "pre" {
-		_ = e.sendBack(ctx, incident, "skipped: no Gemini decision", "", reason)
+		_ = e.sendBack(ctx, incident, "skip_no_decision", "", reason)
 	} else {
 		e.enqueueFinish(ctx, incident, "no decision", reason)
 	}
@@ -309,8 +309,8 @@ func (e *Engine) enqueueFinish(ctx context.Context, incident store.Incident, act
 		Kind: mail.KindResumeFinish, Provider: incident.Provider, Action: action,
 		Reason: reason, SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
 		ExitCode: outcome.ExitCode, TimedOut: outcome.TimedOut,
-		LastMessage: outcome.LastMessage, Files: outcome.Files, TestOutput: outcome.TestOutput,
-		Simulated: incident.Simulated, Now: e.now(),
+		LastMessage: outcome.LastMessage, Files: outcome.Files,
+		Simulated: incident.Simulated,
 	})
 }
 

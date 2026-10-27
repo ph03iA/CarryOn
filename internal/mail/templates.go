@@ -2,8 +2,9 @@ package mail
 
 import (
 	"fmt"
+	"html"
+	"path"
 	"strings"
-	"time"
 
 	"github.com/ph03iA/CarryOn/internal/redact"
 )
@@ -19,107 +20,251 @@ const (
 type Event struct {
 	Kind        string
 	Provider    string
-	WindowLabel string
-	ResetAt     time.Time
 	SessionID   string
 	SessionCwd  string
 	Action      string
-	Summary     string
 	Reason      string
 	Prompt      string
 	ExitCode    int
 	TimedOut    bool
 	LastMessage string
 	Files       []string
-	TestOutput  string
 	Simulated   bool
-	Now         time.Time
 }
 
-// Render builds the subject and plain-text body for one event.
-func Render(event Event) (string, string) {
-	now := event.Now
-	if now.IsZero() {
-		now = time.Now()
-	}
-	subject := subjectFor(event)
-	body := strings.Join(bodyFor(event, now), "\n")
+type line struct {
+	text string
+	html string
+}
+
+// Render returns the subject, the plain-text fallback, and the minimal HTML.
+func Render(event Event) (string, string, string) {
+	subject := redact.Text(subjectFor(event)).Text
 	if event.Simulated {
 		subject = "[SIMULATED] " + subject
-		body = "SIMULATED — no real usage limit was hit.\n\n" + body
 	}
-	return redact.Text(subject).Text, redact.Text(body).Text
+
+	lines := bodyLines(event)
+	textParts := make([]string, 0, len(lines))
+	htmlParts := make([]string, 0, len(lines))
+	for _, item := range lines {
+		textParts = append(textParts, item.text)
+		htmlParts = append(htmlParts, item.html)
+	}
+
+	text := strings.Join(textParts, "\n\n")
+	markup := strings.Join(htmlParts, "\n")
+	if event.Simulated {
+		text = "Simulated run: no real limit was hit.\n\n" + text
+		markup = "<p>Simulated run: no real limit was hit.</p>\n" + markup
+	}
+	return subject, text, markup
 }
 
 func subjectFor(event Event) string {
 	provider := providerName(event.Provider)
+	folder := folderName(event.SessionCwd)
 	switch event.Kind {
 	case KindBack:
-		return fmt.Sprintf("CarryOn: %s is back", provider)
-	case KindNeedsYou:
-		return fmt.Sprintf("CarryOn needs you: %s reset was never confirmed", provider)
+		switch event.Action {
+		case "resume":
+			return joinFolder(fmt.Sprintf("%s is back: resuming", provider), folder)
+		case "none":
+			return fmt.Sprintf("%s is back: nothing to resume", provider)
+		default:
+			return joinFolder(fmt.Sprintf("%s is back: skipped", provider), folder)
+		}
 	case KindResumeFinish:
-		return fmt.Sprintf("CarryOn finished the %s session", provider)
+		if folder == "" {
+			return fmt.Sprintf("%s finished the session", provider)
+		}
+		return fmt.Sprintf("%s finished: %s", provider, folder)
+	case KindNeedsYou:
+		return fmt.Sprintf("CarryOn needs you: %s reset not confirmed", provider)
 	default:
 		return "CarryOn notification"
 	}
 }
 
-func bodyFor(event Event, now time.Time) []string {
-	if event.Kind == KindBack {
-		return backBody(event)
+func joinFolder(prefix, folder string) string {
+	if folder == "" {
+		return prefix
 	}
-	lines := []string{fmt.Sprintf("%s (%s)", providerName(event.Provider), displaySession(event.SessionID))}
+	return prefix + " " + folder
+}
+
+func bodyLines(event Event) []line {
 	switch event.Kind {
-	case KindNeedsYou:
-		lines = append(lines,
-			fmt.Sprintf("Limit: %s", event.WindowLabel),
-			fmt.Sprintf("Reset: %s (%s)", localTime(event.ResetAt), utcTime(event.ResetAt)),
-			"The reset was not confirmed with a fresh reading within 24 hours, so CarryOn stopped waiting.",
-		)
+	case KindBack:
+		return backLines(event)
 	case KindResumeFinish:
-		lines = append(lines, "Decision: "+event.Action, "Reason: "+event.Reason,
-			fmt.Sprintf("Exit status: %d", event.ExitCode))
-		if event.TimedOut {
-			lines = append(lines, "The run hit CarryOn's time limit and was stopped.")
-		}
+		return finishLines(event)
+	case KindNeedsYou:
+		return needsYouLines(event)
+	default:
+		return nil
 	}
-	if event.SessionCwd != "" {
-		lines = append(lines, "Folder: "+event.SessionCwd)
+}
+
+func backLines(event Event) []line {
+	provider := providerName(event.Provider)
+	lines := []line{firstLine(provider+" is back.", backTail(event.Action))}
+	addProject(&lines, event)
+	if event.Action == "resume" {
+		addField(&lines, "Next step", event.Prompt)
 	}
-	if event.LastMessage != "" {
-		lines = append(lines, "", "Last agent message:", event.LastMessage)
+	addField(&lines, "Why", event.Reason)
+	if event.Action == "resume" && event.SessionID != "" {
+		lines = append(lines, commandLine(event))
 	}
-	if len(event.Files) > 0 {
-		lines = append(lines, "", "Files changed:")
-		for _, file := range event.Files {
-			lines = append(lines, "  "+file)
-		}
-	}
-	if event.TestOutput != "" {
-		lines = append(lines, "", "Test output:", event.TestOutput)
-	}
-	lines = append(lines, "", fmt.Sprintf("Sent by CarryOn at %s.", localTime(now)))
 	return lines
 }
 
-// backBody leads with the provider being back, then says what CarryOn did.
-func backBody(event Event) []string {
-	lines := []string{fmt.Sprintf("%s is back — %s", providerName(event.Provider), event.Summary)}
-	if !event.ResetAt.IsZero() {
-		lines = append(lines, "Reset: "+localTime(event.ResetAt)+" ("+utcTime(event.ResetAt)+")")
+func backTail(action string) string {
+	switch action {
+	case "resume":
+		return " CarryOn resumed your session."
+	case "skip_done":
+		return " Skipped: already done."
+	case "skip_stuck":
+		return " Skipped: looked stuck."
+	case "skip_continued":
+		return " Skipped: the session was already continued."
+	case "skip_no_decision":
+		return " Skipped: no Gemini decision."
+	case "skip_error":
+		return " Skipped: could not read the session log."
+	default:
+		return " Nothing to resume."
 	}
-	if event.SessionCwd != "" {
-		lines = append(lines, "Folder: "+event.SessionCwd)
+}
+
+func finishLines(event Event) []line {
+	lines := []line{firstLine("CarryOn finished the session.", " Result: "+resultText(event)+".")}
+	addProject(&lines, event)
+	addField(&lines, "Why", event.Reason)
+	addField(&lines, "Changed", changedList(event.Files))
+	addField(&lines, "Agent said", clip(event.LastMessage, 200))
+	if event.SessionID != "" {
+		lines = append(lines, commandLine(event))
 	}
-	if event.Prompt != "" {
-		lines = append(lines, "Prompt: "+event.Prompt)
-	}
-	if event.Reason != "" {
-		lines = append(lines, "Reason: "+event.Reason)
-	}
-	lines = append(lines, "", fmt.Sprintf("Sent by CarryOn at %s.", localTime(event.Now)))
 	return lines
+}
+
+func needsYouLines(event Event) []line {
+	provider := providerName(event.Provider)
+	lines := []line{firstLine("CarryOn needs you.", " The "+provider+" reset was not confirmed within 24 hours.")}
+	addProject(&lines, event)
+	return lines
+}
+
+func resultText(event Event) string {
+	word := "stopped"
+	switch event.Action {
+	case "done":
+		word = "done"
+	case "resume_again":
+		word = "ran once more"
+	case "could not start":
+		word = "could not start"
+	}
+	if event.TimedOut {
+		return word + " (timeout)"
+	}
+	if event.ExitCode != 0 {
+		return fmt.Sprintf("%s (exit %d)", word, event.ExitCode)
+	}
+	return word
+}
+
+func firstLine(bold, rest string) line {
+	cleanBold := redact.Text(bold).Text
+	cleanRest := redact.Text(rest).Text
+	return line{
+		text: cleanBold + cleanRest,
+		html: "<p><b>" + html.EscapeString(cleanBold) + "</b>" + html.EscapeString(cleanRest) + "</p>",
+	}
+}
+
+func addField(lines *[]line, label, value string) {
+	value = clean(value)
+	if value == "" {
+		return
+	}
+	*lines = append(*lines, line{
+		text: label + ": " + value,
+		html: "<p><b>" + html.EscapeString(label) + ":</b> " + html.EscapeString(value) + "</p>",
+	})
+}
+
+func addProject(lines *[]line, event Event) {
+	addField(lines, "Project", folderName(event.SessionCwd))
+}
+
+func commandLine(event Event) line {
+	command := commandFor(event.Provider, event.SessionID)
+	return line{
+		text: "Continue by hand: " + command,
+		html: "<p>Continue by hand: <code>" + html.EscapeString(clean(command)) + "</code></p>",
+	}
+}
+
+func commandFor(provider, sessionID string) string {
+	switch provider {
+	case "codex":
+		return "codex exec resume " + sessionID
+	case "claude":
+		return "claude --resume " + sessionID
+	default:
+		return "resume " + sessionID
+	}
+}
+
+func changedList(files []string) string {
+	cleaned := make([]string, 0, len(files))
+	for _, file := range files {
+		value := clean(file)
+		if value != "" {
+			cleaned = append(cleaned, value)
+		}
+	}
+	if len(cleaned) == 0 {
+		return ""
+	}
+	if len(cleaned) > 5 {
+		extra := len(cleaned) - 5
+		cleaned = append(cleaned[:5], fmt.Sprintf("+%d more", extra))
+	}
+	return strings.Join(cleaned, ", ")
+}
+
+// clip limits a value to max runes, including the ellipsis.
+func clip(value string, max int) string {
+	value = clean(value)
+	runes := []rune(value)
+	if len(runes) <= max {
+		return value
+	}
+	if max <= 3 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-3]) + "..."
+}
+
+func clean(value string) string {
+	return redact.Text(strings.TrimSpace(value)).Text
+}
+
+func folderName(folder string) string {
+	normalized := strings.ReplaceAll(strings.TrimSpace(folder), "\\", "/")
+	if normalized == "" {
+		return ""
+	}
+	base := path.Base(normalized)
+	if base == "." || base == "/" {
+		return ""
+	}
+	return base
 }
 
 func providerName(provider string) string {
@@ -133,25 +278,4 @@ func providerName(provider string) string {
 	default:
 		return provider
 	}
-}
-
-func displaySession(sessionID string) string {
-	if sessionID == "" {
-		return "no cut-off session found"
-	}
-	return sessionID
-}
-
-func localTime(value time.Time) string {
-	if value.IsZero() {
-		return "unknown"
-	}
-	return value.Local().Format("2006-01-02 3:04 PM MST")
-}
-
-func utcTime(value time.Time) string {
-	if value.IsZero() {
-		return "unknown"
-	}
-	return value.UTC().Format("2006-01-02 15:04 UTC")
 }

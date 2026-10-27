@@ -25,6 +25,7 @@ type Email struct {
 	Kind         string
 	Subject      string
 	Body         string
+	HTML         string
 	State        string
 	Attempts     int
 	FirstAttempt time.Time
@@ -54,11 +55,11 @@ func (d *DB) EnqueueEmail(ctx context.Context, email Email) (bool, error) {
 		email.NextAttempt = now
 	}
 	result, err := d.db.ExecContext(ctx, `INSERT INTO emails
- (id,event_key,kind,subject,body,state,attempts,first_attempt,next_attempt,lease_until,
+ (id,event_key,kind,subject,body,html,state,attempts,first_attempt,next_attempt,lease_until,
   last_error,simulated,updated_at)
- VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+ VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(event_key) DO NOTHING`,
-		email.ID, email.EventKey, email.Kind, email.Subject, email.Body, email.State,
+		email.ID, email.EventKey, email.Kind, email.Subject, email.Body, email.HTML, email.State,
 		email.Attempts, unix(email.FirstAttempt), unix(email.NextAttempt), unix(email.LeaseUntil),
 		email.LastError, boolInt(email.Simulated), unix(now))
 	if err != nil {
@@ -68,14 +69,14 @@ func (d *DB) EnqueueEmail(ctx context.Context, email Email) (bool, error) {
 	return count > 0, err
 }
 
-const emailColumns = `id,event_key,kind,subject,body,state,attempts,first_attempt,
+const emailColumns = `id,event_key,kind,subject,body,html,state,attempts,first_attempt,
  next_attempt,lease_until,last_error,simulated,updated_at`
 
 func scanEmail(row interface{ Scan(...any) error }) (Email, error) {
 	var email Email
 	var first, next, lease, updated int64
 	var simulated int
-	err := row.Scan(&email.ID, &email.EventKey, &email.Kind, &email.Subject, &email.Body,
+	err := row.Scan(&email.ID, &email.EventKey, &email.Kind, &email.Subject, &email.Body, &email.HTML,
 		&email.State, &email.Attempts, &first, &next, &lease, &email.LastError,
 		&simulated, &updated)
 	if err != nil {

@@ -195,9 +195,9 @@ func (e *Engine) provider(name string) quota.Provider {
 
 // enqueue renders and stores one email event.
 func (e *Engine) enqueue(ctx context.Context, eventKey string, event mail.Event) error {
-	subject, body := mail.Render(event)
+	subject, body, markup := mail.Render(event)
 	created, err := e.DB.EnqueueEmail(ctx, store.Email{
-		EventKey: eventKey, Kind: event.Kind, Subject: subject, Body: body,
+		EventKey: eventKey, Kind: event.Kind, Subject: subject, Body: body, HTML: markup,
 		Simulated: event.Simulated, NextAttempt: e.now(),
 	})
 	if err != nil {
@@ -239,7 +239,7 @@ func (e *Engine) deliverOutbox(ctx context.Context) error {
 func (e *Engine) sendEmail(ctx context.Context, email store.Email) error {
 	message := mail.Message{
 		EventKey: email.EventKey, To: e.Config.Recipient,
-		From: e.Config.Sender, Subject: email.Subject, Body: email.Body,
+		From: e.Config.Sender, Subject: email.Subject, Body: email.Body, HTML: email.HTML,
 	}
 	sendErr := e.Sender.Send(ctx, message)
 	if sendErr == nil {
@@ -345,20 +345,20 @@ func (e *Engine) attachCutOffSession(ctx context.Context, incident store.Inciden
 }
 
 // sendBack reports that the limit is back and what CarryOn did about it.
-func (e *Engine) sendBack(ctx context.Context, incident store.Incident, summary, prompt, reason string) error {
+func (e *Engine) sendBack(ctx context.Context, incident store.Incident, action, step, reason string) error {
 	return e.enqueue(ctx, "back:"+incident.ID, mail.Event{
-		Kind: mail.KindBack, Provider: incident.Provider, Summary: summary,
-		ResetAt: incident.ResetAt, SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
-		Prompt: prompt, Reason: reason, Simulated: incident.Simulated, Now: e.now(),
+		Kind: mail.KindBack, Provider: incident.Provider, Action: action,
+		SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
+		Prompt: step, Reason: reason, Simulated: incident.Simulated,
 	})
 }
 
 // sendNeedsYou reports a reset that was never confirmed.
 func (e *Engine) sendNeedsYou(ctx context.Context, incident store.Incident) error {
 	return e.enqueue(ctx, "needsyou:"+incident.ID, mail.Event{
-		Kind: mail.KindNeedsYou, Provider: incident.Provider, WindowLabel: incident.WindowLabel,
-		ResetAt: incident.ResetAt, SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
-		Simulated: incident.Simulated, Now: e.now(),
+		Kind: mail.KindNeedsYou, Provider: incident.Provider,
+		SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
+		Simulated: incident.Simulated,
 	})
 }
 

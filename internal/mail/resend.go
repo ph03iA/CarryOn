@@ -21,6 +21,7 @@ type Message struct {
 	From     string
 	Subject  string
 	Body     string
+	HTML     string
 }
 
 // Sender delivers a message.
@@ -73,6 +74,7 @@ func (r *Resend) Send(ctx context.Context, message Message) error {
 		"to":      []string{message.To},
 		"subject": message.Subject,
 		"text":    message.Body,
+		"html":    message.HTML,
 	})
 	if err != nil {
 		return err
