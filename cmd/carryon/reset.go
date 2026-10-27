@@ -41,7 +41,12 @@ func runReset(_ context.Context, paths config.Paths, args []string) error {
 
 // confirmReset asks once and accepts y or yes, in any case.
 func confirmReset(in io.Reader, out io.Writer) (bool, error) {
-	fmt.Fprint(out, resetPrompt)
+	return confirmPrompt(in, out, resetPrompt)
+}
+
+// confirmPrompt prints prompt and accepts y or yes, in any case.
+func confirmPrompt(in io.Reader, out io.Writer, prompt string) (bool, error) {
+	fmt.Fprint(out, prompt)
 	line, err := bufio.NewReader(in).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, err

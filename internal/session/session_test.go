@@ -251,7 +251,7 @@ func TestNewestSessionByModifiedTime(t *testing.T) {
 	}
 
 	scanner := Scanner{ClaudeRoot: root, MaxBytes: 8 << 20}
-	found, err := scanner.Newest(Claude)
+	found, err := scanner.Newest(Claude, 0)
 	if err != nil {
 		t.Fatalf("newest: %v", err)
 	}
@@ -262,7 +262,41 @@ func TestNewestSessionByModifiedTime(t *testing.T) {
 
 func TestNewestSessionMissingRoot(t *testing.T) {
 	scanner := Scanner{CodexRoot: filepath.Join(t.TempDir(), "missing"), MaxBytes: 8 << 20}
-	if _, err := scanner.Newest(Codex); err != ErrNotFound {
+	if _, err := scanner.Newest(Codex, 0); err != ErrNotFound {
 		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestNewestSkipsRecentlyWrittenSession(t *testing.T) {
+	root := t.TempDir()
+	source, err := os.ReadFile(filepath.Join("testdata", "claude", "cutoff", "proj-a", "11111111-1111-4111-8111-111111111111.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	live := filepath.Join(root, "proj-live", "cccccccc-3333-4333-8333-333333333333.jsonl")
+	idle := filepath.Join(root, "proj-idle", "dddddddd-4444-4444-8444-444444444444.jsonl")
+	for _, path := range []string{live, idle} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, source, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now()
+	if err := os.Chtimes(live, now.Add(-10*time.Second), now.Add(-10*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(idle, now.Add(-10*time.Minute), now.Add(-10*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := Scanner{ClaudeRoot: root, MaxBytes: 8 << 20}
+	found, err := scanner.Newest(Claude, 2*time.Minute)
+	if err != nil {
+		t.Fatalf("newest idle: %v", err)
+	}
+	if found.ID != "dddddddd-4444-4444-8444-444444444444" {
+		t.Fatalf("picked a live session: %s", found.ID)
 	}
 }

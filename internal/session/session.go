@@ -137,15 +137,26 @@ func (s Scanner) FindCutOff(provider string, since time.Time) (Session, bool, er
 	return Session{}, false, nil
 }
 
-// Newest returns the most recently modified session for a provider.
-func (s Scanner) Newest(provider string) (Session, error) {
+// Newest returns the most recently modified session for a provider, skipping
+// logs touched within idle so a live session is never simulated.
+func (s Scanner) Newest(provider string, idle time.Duration) (Session, error) {
 	paths, err := s.files(provider)
 	if err != nil {
 		return Session{}, err
 	}
-	if len(paths) == 0 {
-		return Session{}, ErrNotFound
+	cutoff := time.Now().Add(-idle)
+	for _, path := range paths {
+		if idle > 0 {
+			info, err := os.Stat(path)
+			if err != nil || info.ModTime().After(cutoff) {
+				continue
+			}
+		}
+		found, _, err := s.inspectSession(provider, path)
+		if err != nil {
+			continue
+		}
+		return found, nil
 	}
-	found, _, err := s.inspectSession(provider, paths[0])
-	return found, err
+	return Session{}, ErrNotFound
 }

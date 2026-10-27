@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/ph03iA/CarryOn/internal/config"
 	"github.com/ph03iA/CarryOn/internal/logx"
@@ -60,15 +62,32 @@ func runSimulate(ctx context.Context, paths config.Paths, args []string) error {
 	var found session.Session
 	var err error
 	if sessionID == "" {
-		found, err = scanner.Newest(provider)
+		found, err = scanner.Newest(provider, 2*time.Minute)
 		if errors.Is(err, session.ErrNotFound) {
-			return fmt.Errorf("no %s sessions found", displayProvider(provider))
+			return fmt.Errorf("no %s session older than 2 minutes found; wait a moment or pass --session <id>", displayProvider(provider))
 		}
 	} else {
 		found, err = findSession(scanner, provider, sessionID)
 	}
 	if err != nil {
 		return err
+	}
+
+	folder := found.Cwd
+	if folder == "" {
+		folder = "unknown folder"
+	}
+	if sessionID == "" && !hasFlag(args, "--yes") {
+		confirmed, err := confirmSimulate(os.Stdin, os.Stdout, displayProvider(found.Provider), found.ID, folder)
+		if err != nil {
+			return err
+		}
+		if !confirmed {
+			fmt.Println("Cancelled.")
+			return nil
+		}
+	} else {
+		fmt.Printf("Simulating %s session %s in %s\n", displayProvider(found.Provider), found.ID, folder)
 	}
 
 	file, err := logFile(paths.Log)
@@ -84,14 +103,15 @@ func runSimulate(ctx context.Context, paths config.Paths, args []string) error {
 	defer db.Close()
 	built.Synchronous = true
 
-	folder := found.Cwd
-	if folder == "" {
-		folder = "unknown folder"
-	}
-	fmt.Printf("Simulating %s session %s in %s\n", displayProvider(found.Provider), found.ID, folder)
 	fmt.Println("SIMULATED run: this spends real Gemini and Claude/Codex usage and sends real email.")
 	fmt.Println("It fakes only the usage limit and its reset.")
 	return built.Simulate(ctx, found.Provider, found.ID)
+}
+
+// confirmSimulate asks before a session picked automatically is simulated.
+func confirmSimulate(in io.Reader, out io.Writer, tool, id, folder string) (bool, error) {
+	prompt := fmt.Sprintf("Simulate %s session %s in %s? [y/N] ", tool, id, folder)
+	return confirmPrompt(in, out, prompt)
 }
 
 // simulateRequest resolves the provider and an optional explicit session id.
