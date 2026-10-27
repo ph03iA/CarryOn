@@ -86,7 +86,7 @@ Requirements:
 
 Commands below are for macOS and Linux. Windows differences are noted where commands differ.
 
-1. Clone the repository:
+1. Clone the repository (skip this if you are already inside the cloned folder):
 
 ```sh
 git clone https://github.com/ph03iA/CarryOn.git && cd CarryOn
@@ -108,16 +108,28 @@ go build -trimpath -o carryon.exe ./cmd/carryon
 
 If `go env GOARCH` prints `386`, first run `export GOARCH=amd64` (PowerShell: `$env:GOARCH = "amd64"`).
 
-3. Set your recipient and add the Gemini key:
+3. Set your recipient:
 
 ```sh
 ./carryon init --email you@example.com
-$EDITOR "$HOME/.config/CarryOn/.env"
 ```
 
-On macOS the state folder is `~/Library/Application Support/CarryOn`. On Windows run `.\carryon.exe init --email you@example.com`, then `notepad "$env:APPDATA\CarryOn\.env"`.
+On Windows, run `.\carryon.exe init --email you@example.com`.
 
-Add `GEMINI_API_KEY` (free from Google AI Studio). `RESEND_API_KEY` is optional: without it, `./carryon status --json` shows the queued email.
+Using any text editor, create or open a plain-text file named `.env` in CarryOn's state folder:
+
+- **Windows:** `%APPDATA%\CarryOn\.env`
+- **macOS:** `~/Library/Application Support/CarryOn/.env`
+- **Linux:** `~/.config/CarryOn/.env` (or `$XDG_CONFIG_HOME/CarryOn/.env` if set)
+
+Add these lines, replace `your_gemini_api_key` with your key from Google AI Studio, and save the file:
+
+```dotenv
+GEMINI_API_KEY=your_gemini_api_key
+RESEND_API_KEY=
+```
+
+`RESEND_API_KEY` is optional. Fill it in to enable email delivery, or leave it blank to keep emails queued. `./carryon status --json` shows the queued email.
 
 4. Make a test session. In a new empty folder, run `claude`, ask for a small multi-step task, stop it halfway, and type `/exit`.
 
