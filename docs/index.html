@@ -565,8 +565,21 @@ GEMINI_API_KEY=...</code></pre>
           </div>
           <pre><code id="cmd-service">.\carryon.exe service install</code></pre>
         </div>
+
+        <div class="command">
+          <div class="command-head">
+            <p class="command-label">Everyday commands</p>
+            <button class="copy" type="button" data-target="cmd-daily">Copy</button>
+          </div>
+          <pre><code id="cmd-daily">.\carryon.exe simulate
+.\carryon.exe simulate codex
+.\carryon.exe simulate --session &lt;id&gt;
+.\carryon.exe log
+.\carryon.exe reset</code></pre>
+        </div>
       </div>
 
+      <p class="output-note">simulate picks the newest Claude Code session, or the newest Codex session with <code>simulate codex</code>. reset asks before deleting state; <code>--yes</code> skips the question.</p>
       <p class="output-note">The full README has the rest, including the config fields, the troubleshooting notes, and the known limits.</p>
     </div>
   </section>

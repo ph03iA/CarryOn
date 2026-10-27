@@ -58,6 +58,7 @@ func run(args []string) int {
 		"decisions": runDecisions,
 		"simulate":  runSimulate,
 		"service":   runService,
+		"reset":     runReset,
 	}
 	handler, ok := handlers[command]
 	if !ok {
@@ -101,13 +102,17 @@ Usage:
   carryon watch [--once] [--interval 60s]
   carryon status [--json]
   carryon decisions [--limit 20]
-  carryon simulate --session <id>       replay the pipeline, labelled SIMULATED
+  carryon simulate [codex]              replay the newest session, labelled SIMULATED
+  carryon simulate --session <id>       replay a specific session
+  carryon log                           follow the log until Ctrl+C
+  carryon reset [--yes]                 delete the state database
   carryon service install|uninstall|status
   carryon version
 
 CarryOn reads plan usage every minute without sending a prompt. When a limit
-runs out it emails you, finds the session that was cut off, waits for the reset,
-and asks Gemini whether to continue. Every resume and finish is emailed too.
+comes back it emails you, finds the session that was cut off, waits for a fresh
+reading, and asks Gemini whether to continue. A finish email follows each
+resumed run. Config and keys are kept when you reset state.
 `)
 }
 

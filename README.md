@@ -136,12 +136,16 @@ carryon init                          create the state folder, config, and .env
 carryon watch [--once] [--interval 60s]
 carryon status [--json]
 carryon decisions [--limit 20]
+carryon simulate                      newest Claude Code session
+carryon simulate codex                newest Codex session
 carryon simulate --session <id> [--provider claude|codex]
+carryon log                           follow the log until Ctrl+C
+carryon reset [--yes]                 delete the state database
 carryon service install|uninstall|status
 carryon version
 ```
 
-`carryon simulate` fakes the limit and its reset, then uses the real Gemini call, the real agent resume, and real email. Every log line and email is labelled SIMULATED.
+`carryon simulate` fakes the limit and its reset, then uses the real Gemini call, the real agent resume, and real email. It picks the newest Claude Code session, or the newest Codex session with `simulate codex`, and prints the session, folder, and ID before starting. `carryon log` follows the log file until Ctrl+C. `carryon reset` deletes the state database after a confirmation prompt; `--yes` skips it. Config and keys are kept.
 
 ## What goes to Google and Resend
 

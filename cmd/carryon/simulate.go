@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,6 +61,9 @@ func runSimulate(ctx context.Context, paths config.Paths, args []string) error {
 	var err error
 	if sessionID == "" {
 		found, err = scanner.Newest(provider)
+		if errors.Is(err, session.ErrNotFound) {
+			return fmt.Errorf("no %s sessions found", displayProvider(provider))
+		}
 	} else {
 		found, err = findSession(scanner, provider, sessionID)
 	}
