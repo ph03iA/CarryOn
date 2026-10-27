@@ -274,32 +274,6 @@ pre {
 pre code { white-space: pre; }
 .output-note { margin-top: 8px; font-size: .85rem; color: var(--muted); }
 
-/* Demo slot */
-
-.demo-head { display: flex; align-items: baseline; gap: 14px; }
-.tag {
-  font-size: .68rem;
-  font-weight: 700;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--accent);
-  border: 1px solid var(--accent);
-  padding: 2px 8px;
-}
-.demo-frame {
-  display: grid;
-  place-content: center;
-  gap: 8px;
-  aspect-ratio: 16 / 9;
-  padding: 30px;
-  text-align: center;
-  background: var(--panel);
-  border: 1px solid var(--rule);
-}
-.demo-frame p { max-width: 32em; }
-.demo-title { font-family: var(--serif); font-size: 1.5rem; }
-.demo-note { font-size: .88rem; color: var(--muted); }
-
 /* Plain lists */
 
 .plain { padding-left: 1.15em; list-style: square; max-width: 42em; }
@@ -375,7 +349,6 @@ footer .colophon { flex: 1 1 100%; }
       <a href="#works">How it works</a>
       <a href="#decides">Decisions</a>
       <a href="#output">Output</a>
-      <a href="#demo">Demo</a>
       <a href="#safety">Safety</a>
       <a href="#setup">Setup</a>
       <a href="#privacy">Privacy</a>
@@ -487,26 +460,9 @@ Emails (1)
     </div>
   </section>
 
-  <section class="part wrap" id="demo" aria-labelledby="demo-title">
-    <div class="part-head">
-      <p class="part-no">Part five</p>
-      <h2 id="demo-title">Demo</h2>
-    </div>
-    <div class="part-body">
-      <div class="demo-head">
-        <h3>Walkthrough</h3>
-        <p class="tag">Simulated</p>
-      </div>
-      <div class="demo-frame">
-        <p class="demo-title">A simulated run will be recorded here.</p>
-        <p class="demo-note">This slot is empty for now. The recording will show a simulated limit, a confirmed reset, and a resumed session.</p>
-      </div>
-    </div>
-  </section>
-
   <section class="part wrap" id="safety" aria-labelledby="safety-title">
     <div class="part-head">
-      <p class="part-no">Part six</p>
+      <p class="part-no">Part five</p>
       <h2 id="safety-title">Safety</h2>
     </div>
     <div class="part-body">
@@ -515,6 +471,7 @@ Emails (1)
         <li>Resumes use the session ID, and CarryOn skips a session that was already continued after the cut-off.</li>
         <li>Each limit hit allows at most two resumes for its cut-off session.</li>
         <li>Claude, Codex, and the usage probes run in a kill-on-close sandbox: a Windows Job Object, or a process group that receives <code>SIGKILL</code> on macOS and Linux.</li>
+        <li>On macOS and Linux the group is killed as soon as the agent exits, so a dev server or watcher it started does not keep running. If CarryOn crashes mid-run, it kills the agent it left behind on its next start, as long as the machine has not rebooted since.</li>
         <li>Both API keys are removed from every Claude and Codex process CarryOn starts.</li>
         <li>Secrets are redacted from session text before it goes to Gemini, and email bodies are redacted again before Resend.</li>
       </ul>
@@ -523,7 +480,7 @@ Emails (1)
 
   <section class="part wrap" id="setup" aria-labelledby="setup-title">
     <div class="part-head">
-      <p class="part-no">Part seven</p>
+      <p class="part-no">Part six</p>
       <h2 id="setup-title">Setup</h2>
     </div>
     <div class="part-body">
@@ -562,10 +519,11 @@ $EDITOR "$HOME/.config/CarryOn/.env"</code></pre>
           <p>Make a test session. In a new empty folder, run <code>claude</code>, ask for a small multi-step task, stop it halfway, and type <code>/exit</code>.</p>
         </div></li>
         <li><div>
-          <p>Replay it:</p>
-          <pre><code id="cmd-simulate">./carryon simulate --session &lt;id&gt;</code></pre>
+          <p>Go back to the CarryOn folder, because <code>carryon</code> was built there. Then replay the session:</p>
+          <pre><code id="cmd-simulate">cd path/to/CarryOn
+./carryon simulate --session 4ed2d49b-f7e6-447a-b92d-e5c9142d0ebe</code></pre>
           <button class="copy" type="button" data-target="cmd-simulate">Copy</button>
-          <p>The id is the one Claude prints when you exit. Or wait 2 minutes and run <code>./carryon simulate</code>, which asks before starting. On Windows use <code>.\carryon.exe</code> in place of <code>./carryon</code>.</p>
+          <p>Use your own session's ID: Claude prints it as <code>claude --resume ...</code> when you exit. Or wait 2 minutes and run <code>./carryon simulate</code>, which asks before starting. On Windows use <code>.\carryon.exe</code> in place of <code>./carryon</code>.</p>
         </div></li>
         <li><div>
           <p>Check the state:</p>
@@ -579,6 +537,7 @@ $EDITOR "$HOME/.config/CarryOn/.env"</code></pre>
       <ul class="plain">
         <li>Optional: run <code>go install -trimpath ./cmd/carryon</code>, then add <code>$(go env GOPATH)/bin</code> (on Windows <code>%USERPROFILE%\go\bin</code>) to your PATH and restart the terminal so <code>carryon</code> works anywhere.</li>
         <li>Install the background service with <code>carryon service install</code>. On Windows, run it from PowerShell opened with "Run as administrator" for the hidden S4U task; without admin you get a task that shows a console window. On macOS it writes <code>~/Library/LaunchAgents/dev.carryon.plist</code> and loads it with <code>launchctl</code>. On Linux it writes <code>~/.config/systemd/user/carryon.service</code> and enables it with <code>systemctl --user</code>.</li>
+        <li>On macOS and Linux, run <code>carryon service install</code> from a terminal where <code>claude</code> and <code>codex</code> work. The service records that terminal's <code>PATH</code>, because launchd and systemd start programs with a short <code>PATH</code> that misses <code>~/.local/bin</code>, Homebrew and npm folders. Run it again if you move them.</li>
         <li>Start and stop it:</li>
       </ul>
       <pre><code id="cmd-tasks"># macOS
@@ -611,7 +570,7 @@ Stop-ScheduledTask -TaskName CarryOn</code></pre>
 
   <section class="part wrap" id="limits" aria-labelledby="limits-title">
     <div class="part-head">
-      <p class="part-no">Part eight</p>
+      <p class="part-no">Part seven</p>
       <h2 id="limits-title">Known limits</h2>
     </div>
     <div class="part-body prose">
@@ -621,7 +580,7 @@ Stop-ScheduledTask -TaskName CarryOn</code></pre>
 
   <section class="part wrap" id="privacy" aria-labelledby="privacy-title">
     <div class="part-head">
-      <p class="part-no">Part nine</p>
+      <p class="part-no">Part eight</p>
       <h2 id="privacy-title">Privacy</h2>
     </div>
     <div class="part-body">
@@ -647,7 +606,7 @@ Stop-ScheduledTask -TaskName CarryOn</code></pre>
 
   <section class="part wrap" id="terms" aria-labelledby="terms-title">
     <div class="part-head">
-      <p class="part-no">Part ten</p>
+      <p class="part-no">Part nine</p>
       <h2 id="terms-title">Terms</h2>
     </div>
     <div class="part-body prose">

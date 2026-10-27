@@ -121,13 +121,14 @@ Add `GEMINI_API_KEY` (free from Google AI Studio). `RESEND_API_KEY` is optional:
 
 4. Make a test session. In a new empty folder, run `claude`, ask for a small multi-step task, stop it halfway, and type `/exit`.
 
-5. Replay it:
+5. Go back to the CarryOn folder, because `carryon` was built there. Then replay the session:
 
 ```sh
-./carryon simulate --session <id>
+cd path/to/CarryOn
+./carryon simulate --session 4ed2d49b-f7e6-447a-b92d-e5c9142d0ebe
 ```
 
-The id is the one Claude prints when you exit. Or wait 2 minutes and run `./carryon simulate`, which asks before starting. On Windows use `.\carryon.exe` in place of `./carryon`.
+Use your own session's ID: Claude prints it as `claude --resume ...` when you exit. Or wait 2 minutes and run `./carryon simulate`, which asks before starting. On Windows use `.\carryon.exe` in place of `./carryon`.
 
 6. Check the state:
 
