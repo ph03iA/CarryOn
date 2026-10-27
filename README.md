@@ -82,9 +82,9 @@ Requirements:
 - A Gemini API key
 - Optional: a Resend API key. Without one, emails stay queued and `carryon status --json` shows them.
 
-## Try it in 5 minutes
+## Start watching
 
-Commands below are for macOS and Linux. Windows differences are noted where commands differ.
+Run these commands from the cloned CarryOn folder, using the block for your operating system. Build CarryOn before running `init` or `watch`.
 
 1. Clone the repository (skip this if you are already inside the cloned folder):
 
@@ -98,23 +98,39 @@ git clone https://github.com/ph03iA/CarryOn.git; cd CarryOn
 
 2. Build it:
 
+macOS / Linux:
+
 ```sh
 go build -trimpath -o carryon ./cmd/carryon
 ```
+
+Windows PowerShell:
 
 ```powershell
 go build -trimpath -o carryon.exe ./cmd/carryon
 ```
 
+On Windows, this creates `carryon.exe` in the current folder. If PowerShell cannot find `.\carryon.exe`, complete this build step in the cloned folder first.
+
 If `go env GOARCH` prints `386`, first run `export GOARCH=amd64` (PowerShell: `$env:GOARCH = "amd64"`).
 
-3. Set your recipient:
+3. Set your recipient, replacing `you@example.com` with your email:
+
+macOS / Linux:
 
 ```sh
 ./carryon init --email you@example.com
 ```
 
-On Windows, run `.\carryon.exe init --email you@example.com`.
+Windows PowerShell:
+
+```powershell
+.\carryon.exe init --email you@example.com
+```
+
+CarryOn watches both Claude Code and Codex by default. Add `--providers claude` or `--providers codex` to the `init` command to watch only one.
+
+To change the saved recipient later, rerun the `init --email` command above with your real email. Running `init` without `--email` keeps the saved address. The recipient is stored in `config.json`; `.env` holds API keys.
 
 Manually create a plain-text file named `.env` in CarryOn's state folder using any text editor:
 
@@ -131,23 +147,57 @@ RESEND_API_KEY=
 
 `RESEND_API_KEY` is optional. Fill it in to enable email delivery, or leave it blank to keep emails queued. `./carryon status --json` shows the queued email.
 
-4. Make a test session. In a new empty folder, run `claude`, ask for a small multi-step task, stop it halfway, and type `/exit`.
+With the default `onboarding@resend.dev` sender, use the email registered to your Resend account as the recipient.
 
-5. Go back to the CarryOn folder, because `carryon` was built there. Then replay the session:
+4. Start the watcher from the CarryOn folder:
+
+macOS / Linux:
 
 ```sh
-cd path/to/CarryOn
-./carryon simulate --session 4ed2d49b-f7e6-447a-b92d-e5c9142d0ebe
+./carryon watch
 ```
 
-Use your own session's ID: Claude prints it as `claude --resume ...` when you exit. Or wait 2 minutes and run `./carryon simulate`, which asks before starting. On Windows use `.\carryon.exe` in place of `./carryon`.
+Windows PowerShell:
 
-6. Check the state:
+```powershell
+.\carryon.exe watch
+```
+
+Leave this terminal open and keep your computer awake. Use Claude Code or Codex normally in a separate window. If you are already limited, start the watcher before the reset: it must observe the exhausted quota to record the incident. You do not need to enter the reset time.
+
+5. Open another terminal in the CarryOn folder, check the state, and follow the logs:
+
+macOS / Linux:
 
 ```sh
 ./carryon status
+./carryon log
+```
+
+Windows PowerShell:
+
+```powershell
+.\carryon.exe status
+.\carryon.exe log
+```
+
+When a limit is hit, look for `limit exhausted` and `cut-off session for claude` or `cut-off session for codex`. If the log says no cut-off session was found, CarryOn retries at reset; it cannot resume without finding that session. Avoid manually continuing the same interrupted session while CarryOn is waiting.
+
+6. After the reset, check the decisions in another terminal:
+
+macOS / Linux:
+
+```sh
 ./carryon decisions
 ```
+
+Windows PowerShell:
+
+```powershell
+.\carryon.exe decisions
+```
+
+CarryOn polls every minute. Once a fresh usage reading confirms the reset, Gemini decides whether to resume the unfinished task or skip it. A resume is not guaranteed at the exact reset minute.
 
 ## Use it every day
 

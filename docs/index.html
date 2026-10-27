@@ -484,7 +484,7 @@ Emails (1)
       <h2 id="setup-title">Setup</h2>
     </div>
     <div class="part-body">
-      <p>Run these in your shell. Windows differences are noted where commands differ.</p>
+      <p>Run these commands from the cloned CarryOn folder, using the block for your operating system. Build CarryOn before running <code>init</code> or <code>watch</code>.</p>
       <ul class="plain">
         <li>Windows 10 or 11, macOS, or Linux</li>
         <li>Go 1.26 or newer</li>
@@ -493,25 +493,38 @@ Emails (1)
         <li>Optional: a Resend API key. Without one, emails stay queued and <code>carryon status --json</code> shows them.</li>
       </ul>
 
-      <h3>Try it in 5 minutes</h3>
+      <h3>Start watching</h3>
       <ol class="steps">
         <li><div>
           <p>Clone the repository (skip this if you are already inside the cloned folder):</p>
+          <p>macOS / Linux:</p>
           <pre><code id="cmd-clone">git clone https://github.com/ph03iA/CarryOn.git &amp;&amp; cd CarryOn</code></pre>
           <button class="copy" type="button" data-target="cmd-clone">Copy</button>
-          <p>On Windows, use <code>git clone https://github.com/ph03iA/CarryOn.git; cd CarryOn</code>.</p>
+          <p>Windows PowerShell:</p>
+          <pre><code id="cmd-clone-windows">git clone https://github.com/ph03iA/CarryOn.git; cd CarryOn</code></pre>
+          <button class="copy" type="button" data-target="cmd-clone-windows">Copy</button>
         </div></li>
         <li><div>
           <p>Build it:</p>
+          <p>macOS / Linux:</p>
           <pre><code id="cmd-build">go build -trimpath -o carryon ./cmd/carryon</code></pre>
           <button class="copy" type="button" data-target="cmd-build">Copy</button>
-          <p>On Windows, build <code>carryon.exe</code>: <code>go build -trimpath -o carryon.exe ./cmd/carryon</code>. If <code>go env GOARCH</code> prints <code>386</code>, set <code>GOARCH=amd64</code> first (PowerShell: <code>$env:GOARCH = "amd64"</code>).</p>
+          <p>Windows PowerShell:</p>
+          <pre><code id="cmd-build-windows">go build -trimpath -o carryon.exe ./cmd/carryon</code></pre>
+          <button class="copy" type="button" data-target="cmd-build-windows">Copy</button>
+          <p>On Windows, this creates <code>carryon.exe</code> in the current folder. If PowerShell cannot find <code>.\carryon.exe</code>, complete this build step in the cloned folder first.</p>
+          <p>If <code>go env GOARCH</code> prints <code>386</code>, set <code>GOARCH=amd64</code> first (PowerShell: <code>$env:GOARCH = "amd64"</code>).</p>
         </div></li>
         <li><div>
-          <p>Set your recipient:</p>
+          <p>Set your recipient, replacing <code>you@example.com</code> with your email:</p>
+          <p>macOS / Linux:</p>
           <pre><code id="cmd-setup">./carryon init --email you@example.com</code></pre>
           <button class="copy" type="button" data-target="cmd-setup">Copy</button>
-          <p>On Windows, run <code>.\carryon.exe init --email you@example.com</code>.</p>
+          <p>Windows PowerShell:</p>
+          <pre><code id="cmd-setup-windows">.\carryon.exe init --email you@example.com</code></pre>
+          <button class="copy" type="button" data-target="cmd-setup-windows">Copy</button>
+          <p>Run <code>init --email</code> again to change the recipient. Without <code>--email</code>, CarryOn keeps the saved address. The recipient is saved in <code>config.json</code>; <code>.env</code> holds your API keys.</p>
+          <p>CarryOn watches both Claude Code and Codex by default. Add <code>--providers claude</code> or <code>--providers codex</code> to the <code>init</code> command to watch only one.</p>
           <p>Manually create a plain-text file named <code>.env</code> in CarryOn's state folder using any text editor:</p>
           <p><strong>Windows:</strong> <code>%APPDATA%\CarryOn\.env</code><br>
           <strong>macOS:</strong> <code>~/Library/Application Support/CarryOn/.env</code><br>
@@ -520,22 +533,39 @@ Emails (1)
           <pre><code>GEMINI_API_KEY=your_gemini_api_key
 RESEND_API_KEY=</code></pre>
           <p><code>RESEND_API_KEY</code> is optional. Fill it in to enable email delivery, or leave it blank to keep emails queued. <code>./carryon status --json</code> shows the queued email.</p>
+          <p>With the default sender <code>onboarding@resend.dev</code>, use the recipient email registered to your Resend account.</p>
         </div></li>
         <li><div>
-          <p>Make a test session. In a new empty folder, run <code>claude</code>, ask for a small multi-step task, stop it halfway, and type <code>/exit</code>.</p>
+          <p>Start the watcher from the CarryOn folder:</p>
+          <p>macOS / Linux:</p>
+          <pre><code id="cmd-watch">./carryon watch</code></pre>
+          <button class="copy" type="button" data-target="cmd-watch">Copy</button>
+          <p>Windows PowerShell:</p>
+          <pre><code id="cmd-watch-windows">.\carryon.exe watch</code></pre>
+          <button class="copy" type="button" data-target="cmd-watch-windows">Copy</button>
+          <p>Leave this terminal open and keep your computer awake. Use Claude Code or Codex normally in a separate window. If you are already limited, start the watcher before the reset: it must observe the exhausted quota to record the incident. You do not need to enter the reset time.</p>
         </div></li>
         <li><div>
-          <p>Go back to the CarryOn folder, because <code>carryon</code> was built there. Then replay the session:</p>
-          <pre><code id="cmd-simulate">cd path/to/CarryOn
-./carryon simulate --session 4ed2d49b-f7e6-447a-b92d-e5c9142d0ebe</code></pre>
-          <button class="copy" type="button" data-target="cmd-simulate">Copy</button>
-          <p>Use your own session's ID: Claude prints it as <code>claude --resume ...</code> when you exit. Or wait 2 minutes and run <code>./carryon simulate</code>, which asks before starting. On Windows use <code>.\carryon.exe</code> in place of <code>./carryon</code>.</p>
-        </div></li>
-        <li><div>
-          <p>Check the state:</p>
+          <p>Open another terminal in the CarryOn folder, check the state, and follow the logs:</p>
+          <p>macOS / Linux:</p>
           <pre><code id="cmd-check">./carryon status
-./carryon decisions</code></pre>
+./carryon log</code></pre>
           <button class="copy" type="button" data-target="cmd-check">Copy</button>
+          <p>Windows PowerShell:</p>
+          <pre><code id="cmd-check-windows">.\carryon.exe status
+.\carryon.exe log</code></pre>
+          <button class="copy" type="button" data-target="cmd-check-windows">Copy</button>
+          <p>When a limit is hit, look for <code>limit exhausted</code> and <code>cut-off session for claude</code> or <code>cut-off session for codex</code>. If the log says no cut-off session was found, CarryOn retries at reset; it cannot resume without finding that session. Avoid manually continuing the same interrupted session while CarryOn is waiting.</p>
+        </div></li>
+        <li><div>
+          <p>After the reset, check the decisions in another terminal:</p>
+          <p>macOS / Linux:</p>
+          <pre><code id="cmd-decisions">./carryon decisions</code></pre>
+          <button class="copy" type="button" data-target="cmd-decisions">Copy</button>
+          <p>Windows PowerShell:</p>
+          <pre><code id="cmd-decisions-windows">.\carryon.exe decisions</code></pre>
+          <button class="copy" type="button" data-target="cmd-decisions-windows">Copy</button>
+          <p>CarryOn polls every minute. Once a fresh usage reading confirms the reset, Gemini decides whether to resume the unfinished task or skip it. A resume is not guaranteed at the exact reset minute.</p>
         </div></li>
       </ol>
 
