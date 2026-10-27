@@ -486,7 +486,7 @@ func TestCutOffFoundAtResetWhenMissingInitially(t *testing.T) {
 
 func copyCodexFixture(t *testing.T, root string) {
 	t.Helper()
-	source := filepath.Join("..", "session", "testdata", "codex", "cutoff", "2026", "10", "26", "rollout-2026-10-26T09-50-00-01a17756-0de8-7fd1-87b3-57ef7c572450.jsonl")
+	source := filepath.Join("..", "session", "testdata", "codex", "transcript", "2026", "10", "26", "rollout-2026-10-26T09-50-00-01a17756-0de8-7fd1-87b3-57ef7c572450.jsonl")
 	data, err := os.ReadFile(source)
 	if err != nil {
 		t.Fatalf("read codex fixture: %v", err)
