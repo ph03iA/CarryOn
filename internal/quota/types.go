@@ -87,14 +87,6 @@ func ResolveBinary(name, configured string, fallbacks []string) (string, error) 
 	return "", fmt.Errorf("%s not found; install it or set its path in config.json", name)
 }
 
-func isShim(path string) bool {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".cmd", ".bat", ".ps1":
-		return true
-	}
-	return false
-}
-
 func nativeOnly(path string) (string, error) {
 	if isShim(path) {
 		return "", fmt.Errorf("%s is a shell shim; point CarryOn at the native executable", path)
