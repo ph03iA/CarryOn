@@ -104,6 +104,7 @@ The default recipient is `prajwalchahande7@gmail.com` and the default sender is 
 
 | Field | Default | Meaning |
 | --- | --- | --- |
+| `providers` | `both` | `claude`, `codex`, or `both` |
 | `recipient` | `prajwalchahande7@gmail.com` | Where email goes |
 | `sender` | `onboarding@resend.dev` | Verified Resend sender |
 | `gemini_model` | `gemini-3.5-flash-lite` | Model used for decisions |
@@ -132,7 +133,7 @@ The task starts at sign-in, restarts after a failure, and allows only one instan
 ## Commands
 
 ```
-carryon init                          create the state folder, config, and .env
+carryon init [--providers claude|codex|both]  create the state folder, config, and .env
 carryon watch [--once] [--interval 60s]
 carryon status [--json]
 carryon decisions [--limit 20]
@@ -144,6 +145,8 @@ carryon reset [--yes]                 delete the state database
 carryon service install|uninstall|status
 carryon version
 ```
+
+By default CarryOn watches both tools. To watch one, run `carryon init --providers claude` or `carryon init --providers codex`. The watcher reads usage and resumes sessions only for the selected tools; incidents already recorded for a disabled tool are closed without resuming on the next cycle.
 
 `carryon simulate` fakes the limit and its reset, then uses the real Gemini call, the real agent resume, and real email. It picks the newest Claude Code session, or the newest Codex session with `simulate codex`, and prints the session, folder, and ID before starting. `carryon log` follows the log file until Ctrl+C. `carryon reset` deletes the state database after a confirmation prompt; `--yes` skips it. Config and keys are kept.
 
