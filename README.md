@@ -148,7 +148,7 @@ carryon version
 
 By default CarryOn watches both tools. To watch one, run `carryon init --providers claude` or `carryon init --providers codex`. The watcher reads usage and resumes sessions only for the selected tools; incidents already recorded for a disabled tool are closed without resuming on the next cycle.
 
-`carryon simulate` fakes the limit and its reset, then uses the real Gemini call, the real agent resume, and real email. It picks the newest Claude Code session, or the newest Codex session with `simulate codex`, and prints the session, folder, and ID before starting. `carryon log` follows the log file until Ctrl+C. `carryon reset` deletes the state database after a confirmation prompt; `--yes` skips it. Config and keys are kept.
+`carryon simulate` fakes the limit and its reset, then uses the real Gemini call, the real agent resume, and real email. Without `--session`, it skips sessions written to in the last 2 minutes, picks the newest older Claude Code session, or the newest older Codex session with `simulate codex`, and asks before starting with the session, folder, and ID. `carryon log` follows the log file until Ctrl+C. `carryon reset` deletes the state database after a confirmation prompt; `--yes` skips it. Config and keys are kept.
 
 ## What goes to Google and Resend
 

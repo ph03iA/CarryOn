@@ -467,7 +467,7 @@ Continue by hand: claude --resume bc7a02f5-1234-5678-9abc-def012345678</code></p
 
       <figure>
         <figcaption>Example: carryon status</figcaption>
-        <pre><code>CarryOn 0.1.0 - state in C:\Users\prajw\AppData\Local\Temp\carryon-site-demo2
+        <pre><code>CarryOn 0.1.0 - state in C:\Users\you\AppData\Roaming\CarryOn
 Watching: both
 Recipient: you@example.com  Sender: onboarding@resend.dev  Model: gemini-3.5-flash-lite
 
@@ -584,7 +584,7 @@ GEMINI_API_KEY=...</code></pre>
         </div>
       </div>
 
-      <p class="output-note">simulate picks the newest Claude Code session, or the newest Codex session with <code>simulate codex</code>. reset asks before deleting state; <code>--yes</code> skips the question.</p>
+      <p class="output-note">simulate without <code>--session</code> skips sessions written to in the last 2 minutes and asks before starting. It picks the newest older Claude Code session, or the newest older Codex session with <code>simulate codex</code>. reset asks before deleting state; <code>--yes</code> skips the question.</p>
       <p class="output-note">The full README has the rest, including the config fields, the troubleshooting notes, and the known limits.</p>
     </div>
   </section>
