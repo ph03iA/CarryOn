@@ -85,6 +85,11 @@ func writeEnvTemplate(path string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
 }
 
+func runLog(ctx context.Context, paths config.Paths, _ []string) error {
+	fmt.Fprintf(os.Stderr, "Following %s. Press Ctrl+C to stop.\n", paths.Log)
+	return logx.Follow(ctx, paths.Log, os.Stdout, 500*time.Millisecond)
+}
+
 func runWatch(ctx context.Context, paths config.Paths, args []string) error {
 	lock, err := single.Acquire(single.Name)
 	if err != nil {

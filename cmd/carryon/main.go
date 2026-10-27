@@ -53,6 +53,7 @@ func run(args []string) int {
 	handlers := map[string]func(context.Context, config.Paths, []string) error{
 		"init":      runInit,
 		"watch":     runWatch,
+		"log":       runLog,
 		"status":    runStatus,
 		"decisions": runDecisions,
 		"simulate":  runSimulate,
