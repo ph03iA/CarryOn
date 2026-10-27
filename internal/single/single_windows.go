@@ -9,7 +9,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func acquire(name string) (*Lock, error) {
+// Lock is a held global mutex.
+type Lock struct{ handle uintptr }
+
+func acquire(_, name string) (*Lock, error) {
 	handle, err := windows.CreateMutex(nil, false, windows.StringToUTF16Ptr(name))
 	if errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
 		windows.CloseHandle(handle)

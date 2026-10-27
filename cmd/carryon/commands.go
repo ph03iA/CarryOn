@@ -114,7 +114,7 @@ func runLog(ctx context.Context, paths config.Paths, _ []string) error {
 }
 
 func runWatch(ctx context.Context, paths config.Paths, args []string) error {
-	lock, err := single.Acquire(single.Name)
+	lock, err := single.Acquire(paths.Dir, single.Name)
 	if err != nil {
 		return err
 	}

@@ -16,7 +16,7 @@ import (
 const resetPrompt = "Delete CarryOn's state? Config and keys are kept. [y/N] "
 
 func runReset(_ context.Context, paths config.Paths, args []string) error {
-	lock, err := single.Acquire(single.Name)
+	lock, err := single.Acquire(paths.Dir, single.Name)
 	if err != nil {
 		return fmt.Errorf("stop CarryOn before resetting its state: %w", err)
 	}
