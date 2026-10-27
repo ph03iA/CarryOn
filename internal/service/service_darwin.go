@@ -16,7 +16,18 @@ import (
 const label = "dev.carryon"
 
 // plist builds the launch agent that runs watch at login and restarts it.
-func plist(exePath, workDir string) string {
+// launchd starts agents with a minimal PATH, so the installing shell's PATH is
+// recorded to keep claude and codex (often in ~/.local/bin or Homebrew) findable.
+func plist(exePath, workDir, searchPath string) string {
+	environment := ""
+	if searchPath != "" {
+		environment = fmt.Sprintf(`
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>%s</string>
+	</dict>`, xmlEscape(searchPath))
+	}
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -35,10 +46,10 @@ func plist(exePath, workDir string) string {
 	<key>KeepAlive</key>
 	<true/>
 	<key>ProcessType</key>
-	<string>Background</string>
+	<string>Background</string>%s
 </dict>
 </plist>
-`, label, xmlEscape(exePath), xmlEscape(workDir))
+`, label, xmlEscape(exePath), xmlEscape(workDir), environment)
 }
 
 func xmlEscape(value string) string {
@@ -67,7 +78,7 @@ func Install(ctx context.Context, exePath, workDir string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", fmt.Errorf("create LaunchAgents directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(plist(exePath, workDir)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(plist(exePath, workDir, os.Getenv("PATH"))), 0o644); err != nil {
 		return "", fmt.Errorf("write launch agent: %w", err)
 	}
 	_, _ = command(ctx, "launchctl", "unload", path)

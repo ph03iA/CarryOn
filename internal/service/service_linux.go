@@ -15,7 +15,13 @@ import (
 const unitName = "carryon.service"
 
 // unit builds the user service that runs watch and restarts it on failure.
-func unit(exePath, workDir string) string {
+// The systemd user manager has a minimal PATH, so the installing shell's PATH
+// is recorded to keep claude and codex (often in ~/.local/bin) findable.
+func unit(exePath, workDir, searchPath string) string {
+	environment := ""
+	if searchPath != "" {
+		environment = "Environment=" + quote("PATH="+searchPath) + "\n"
+	}
 	return fmt.Sprintf(`[Unit]
 Description=CarryOn keeps Claude Code and Codex work going through usage limits.
 
@@ -23,12 +29,12 @@ Description=CarryOn keeps Claude Code and Codex work going through usage limits.
 Type=simple
 ExecStart=%s watch
 WorkingDirectory=%s
-Restart=on-failure
+%sRestart=on-failure
 RestartSec=60
 
 [Install]
 WantedBy=default.target
-`, quote(exePath), quote(workDir))
+`, quote(exePath), quote(workDir), environment)
 }
 
 // quote makes a value safe as one systemd command or directory argument.
@@ -57,7 +63,7 @@ func Install(ctx context.Context, exePath, workDir string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", fmt.Errorf("create systemd user directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte(unit(exePath, workDir)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(unit(exePath, workDir, os.Getenv("PATH"))), 0o644); err != nil {
 		return "", fmt.Errorf("write systemd unit: %w", err)
 	}
 	if _, err := command(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
