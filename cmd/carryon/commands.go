@@ -83,17 +83,6 @@ func runInit(_ context.Context, paths config.Paths, args []string) error {
 	}
 	fmt.Printf("CarryOn is set up in %s\n\n", paths.Dir)
 	fmt.Printf("Watching: %s\n", watchLabel(cfg.Providers))
-	fmt.Println("Next steps:")
-	fmt.Println("  1. Create", paths.Env, "and add your keys")
-	fmt.Println("     RESEND_API_KEY=re_...")
-	fmt.Println("     GEMINI_API_KEY=...")
-	if cfg.Recipient == "" {
-		fmt.Println("  2. No recipient set. Add one with: carryon init --email you@example.com")
-	} else {
-		fmt.Printf("  2. Emails go to %s from %s\n", cfg.Recipient, cfg.Sender)
-	}
-	fmt.Println("  3. Run: carryon watch")
-	fmt.Println("  4. Install the logon task: carryon service install")
 	return nil
 }
 
