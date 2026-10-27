@@ -3,6 +3,7 @@ package resume
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -49,7 +50,7 @@ type Runner struct {
 func Command(provider, sessionID, prompt string) ([]string, error) {
 	switch provider {
 	case "claude":
-		return []string{"--resume", sessionID, "-p", prompt, "--permission-mode", "acceptEdits"}, nil
+		return []string{"--resume", sessionID, "-p", prompt, "--permission-mode", "acceptEdits", "--output-format", "json"}, nil
 	case "codex":
 		return []string{"exec", "resume", sessionID, prompt, "-c", `sandbox_mode="workspace-write"`}, nil
 	default:
@@ -83,30 +84,32 @@ func (r Runner) Run(ctx context.Context, spec Spec) (Outcome, error) {
 	}
 
 	snapshot := captureGit(ctx, spec.Cwd)
-	log := &tailBuffer{max: r.logLimit()}
+	stdout := &tailBuffer{max: r.logLimit()}
+	stderr := &tailBuffer{max: r.logLimit()}
 	started := time.Now()
 	result, err := winjob.Run(ctx, winjob.Spec{
 		Path:       binary,
 		Args:       args,
 		Dir:        spec.Cwd,
 		Env:        r.environment(),
-		Stdout:     log,
-		Stderr:     log,
+		Stdout:     stdout,
+		Stderr:     stderr,
 		Timeout:    r.timeout(),
 		CloseStdin: true,
 	})
 	if err != nil {
 		return Outcome{}, err
 	}
+	runLog := stdout.String() + "\n" + stderr.String()
 	outcome := Outcome{
 		ExitCode: result.ExitCode,
 		TimedOut: result.TimedOut,
 		Duration: time.Since(started),
-		RunLog:   log.String(),
+		RunLog:   runLog,
 	}
-	outcome.LastMessage = readLastMessage(lastMessageFile, outcome.RunLog)
+	outcome.LastMessage = r.lastMessage(spec.Provider, lastMessageFile, stdout.String())
 	outcome.Files, outcome.DiffStat, outcome.DiffExcerpt = snapshot.changes(ctx, spec.Cwd)
-	outcome.TestOutput = testExcerpt(outcome.RunLog)
+	outcome.TestOutput = testExcerpt(runLog)
 	return outcome, nil
 }
 
@@ -152,13 +155,47 @@ func (r Runner) lastMessageFile(provider string) (string, func(), error) {
 	return path, func() { os.Remove(path) }, nil
 }
 
-func readLastMessage(path, runLog string) string {
-	if path != "" {
-		if data, err := os.ReadFile(path); err == nil && strings.TrimSpace(string(data)) != "" {
-			return summarize(string(data))
+// lastMessage takes Claude's result from stdout JSON and Codex's from the
+// -o file. Stderr and warnings are never used.
+func (r Runner) lastMessage(provider, path, stdout string) string {
+	if provider == "codex" {
+		return fileMessage(path)
+	}
+	if provider == "claude" {
+		return claudeResult(stdout)
+	}
+	return ""
+}
+
+func fileMessage(path string) string {
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return summarize(string(data))
+}
+
+func claudeResult(stdout string) string {
+	var response struct {
+		Result string `json:"result"`
+	}
+	trimmed := strings.TrimSpace(stdout)
+	if json.Unmarshal([]byte(trimmed), &response) == nil {
+		return summarize(response.Result)
+	}
+	for _, raw := range strings.Split(trimmed, "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" {
+			continue
+		}
+		if json.Unmarshal([]byte(line), &response) == nil && strings.TrimSpace(response.Result) != "" {
+			return summarize(response.Result)
 		}
 	}
-	return summarize(runLog)
+	return ""
 }
 
 var testCommandPattern = regexp.MustCompile(`(?i)(go test|npm (run )?test|pnpm test|yarn test|pytest|python -m pytest|cargo test|dotnet test|mvn test|gradle test|jest|vitest)`)

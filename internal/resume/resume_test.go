@@ -36,7 +36,7 @@ func TestCommandMatchesTheSpec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantClaude := []string{"--resume", "sid-1", "-p", "do the thing", "--permission-mode", "acceptEdits"}
+	wantClaude := []string{"--resume", "sid-1", "-p", "do the thing", "--permission-mode", "acceptEdits", "--output-format", "json"}
 	if !reflect.DeepEqual(claude, wantClaude) {
 		t.Fatalf("claude argv\n got %q\nwant %q", claude, wantClaude)
 	}
@@ -285,4 +285,21 @@ func newGitRepo(t *testing.T) string {
 	runGitForTest(t, dir, "add", "-A")
 	runGitForTest(t, dir, "commit", "-m", "baseline")
 	return dir
+}
+
+func TestClaudeLastMessageIgnoresStderr(t *testing.T) {
+	dir := t.TempDir()
+	runner := Runner{ClaudeBin: fakeBinary(t), Env: fakeEnv("claude_stderr"), Timeout: 30 * time.Second}
+	outcome, err := runner.Run(context.Background(), Spec{
+		Provider: "claude", SessionID: "sid", Cwd: dir, Prompt: "continue",
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if outcome.LastMessage != "Result from stdout" {
+		t.Fatalf("unexpected last message: %q", outcome.LastMessage)
+	}
+	if strings.Contains(outcome.LastMessage, "warning") {
+		t.Fatal("stderr leaked into the last message")
+	}
 }
