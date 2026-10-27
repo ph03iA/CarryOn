@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -122,6 +123,12 @@ func newHarness(t *testing.T) *harness {
 	}
 }
 
+func testConfig() config.Config {
+	cfg := config.Defaults()
+	cfg.Recipient = "you@example.com"
+	return cfg
+}
+
 func newEngine(t *testing.T, dbPath, root string, provider *fakeProvider, now time.Time) (*Engine, *store.DB) {
 	t.Helper()
 	db, err := store.Open(dbPath)
@@ -134,7 +141,7 @@ func newEngine(t *testing.T, dbPath, root string, provider *fakeProvider, now ti
 		{Action: decision.ActionDone, Reason: "the task is complete"},
 	}}
 	built := &Engine{
-		DB: db, Config: config.Defaults(),
+		DB: db, Config: testConfig(),
 		Providers: []quota.Provider{provider},
 		Scanner:   session.Scanner{ClaudeRoot: root, MaxBytes: 8 << 20},
 		Decider:   decider,
@@ -507,7 +514,7 @@ func TestStuckIncidentDoesNotBlockAnotherProvider(t *testing.T) {
 	}}
 	runner := &fakeRunner{outcome: resume.Outcome{LastMessage: "done"}}
 	built := &Engine{
-		DB: db, Config: config.Defaults(),
+		DB: db, Config: testConfig(),
 		Providers: []quota.Provider{claudeProvider},
 		Scanner:   session.Scanner{ClaudeRoot: claudeRoot, CodexRoot: codexRoot, MaxBytes: 8 << 20},
 		Decider:   decider, Runner: runner, Sender: &fakeSender{},
@@ -953,5 +960,32 @@ func TestDisabledProviderIncidentIsClosed(t *testing.T) {
 	}
 	if len(h.sender.sent) != 0 {
 		t.Fatalf("disabled provider must not email: %v", h.subjects())
+	}
+}
+
+func TestNoRecipientQueuesAndWarnsOnce(t *testing.T) {
+	h := newHarness(t)
+	var logs bytes.Buffer
+	h.engine.Log = logx.New(&logs)
+	h.engine.Config.Recipient = ""
+	h.provider.snapshot.Windows[0].UsedPercent = 0
+	if err := h.engine.enqueue(context.Background(), "queued:1", mail.Event{
+		Kind: mail.KindBack, Provider: "claude", Action: "none",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	h.step(t)
+	h.step(t)
+
+	if len(h.sender.sent) != 0 {
+		t.Fatalf("emails were sent without a recipient: %v", h.subjects())
+	}
+	message := "no recipient set; run carryon init --email you@example.com"
+	if got := strings.Count(logs.String(), message); got != 1 {
+		t.Fatalf("want the warning once, got %d:\n%s", got, logs.String())
+	}
+	if _, err := h.db.ClaimEmail(context.Background(), h.now, time.Minute); err != nil {
+		t.Fatalf("email was not left queued: %v", err)
 	}
 }

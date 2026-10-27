@@ -98,7 +98,8 @@ func printHelp() {
 	fmt.Print(`CarryOn keeps Claude Code and Codex work going through usage limits.
 
 Usage:
-  carryon init [--providers claude|codex|both]  create the state folder and config
+  carryon init [--providers claude|codex|both] [--email you@example.com]
+                                        create the state folder and config
   carryon watch [--once] [--interval 60s]
   carryon status [--json]
   carryon decisions [--limit 20]
@@ -112,7 +113,7 @@ Usage:
 CarryOn reads plan usage every minute without sending a prompt. When a limit
 comes back it emails you, finds the session that was cut off, waits for a fresh
 reading, and asks Gemini whether to continue. A finish email follows each
-resumed run. The providers setting limits what the watcher reads; a limit recorded for a disabled tool is closed without resuming. Config and keys are kept when you reset state.
+resumed run. The providers setting limits what the watcher reads; a limit recorded for a disabled tool is closed without resuming. There is no default recipient: set one with init --email. Config and keys are kept when you reset state.
 `)
 }
 

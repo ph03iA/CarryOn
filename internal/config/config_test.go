@@ -81,7 +81,7 @@ func TestRedactedName(t *testing.T) {
 func TestNormalizeFillsAndClamps(t *testing.T) {
 	cfg := Config{PollSeconds: 1, MaxResumes: 9, PromptChars: 5000}
 	normalized := cfg.Normalize()
-	if normalized.Recipient != DefaultRecipient || normalized.Sender != DefaultSender {
+	if normalized.Recipient != "" || normalized.Sender != DefaultSender {
 		t.Fatalf("defaults not applied: %+v", normalized)
 	}
 	if normalized.PollSeconds != 15 {
@@ -99,6 +99,7 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	cfg := Defaults()
 	cfg.GeminiModel = "gemini-2.5-flash"
+	cfg.Recipient = "you@example.com"
 	if err := Save(path, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -106,14 +107,14 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.GeminiModel != "gemini-2.5-flash" || loaded.Recipient != DefaultRecipient {
+	if loaded.GeminiModel != "gemini-2.5-flash" || loaded.Recipient != "you@example.com" {
 		t.Fatalf("unexpected config: %+v", loaded)
 	}
 }
 
 func TestLoadMissingReturnsDefaults(t *testing.T) {
 	loaded, err := Load(filepath.Join(t.TempDir(), "missing.json"))
-	if err != nil || loaded.Recipient != DefaultRecipient {
+	if err != nil || loaded.Recipient != "" {
 		t.Fatalf("loaded=%+v err=%v", loaded, err)
 	}
 }
@@ -138,9 +139,9 @@ func TestLoadSecretsPrefersEnvironment(t *testing.T) {
 	}
 }
 
-func TestDefaultRecipient(t *testing.T) {
-	if got := Defaults().Recipient; got != "prajwalchahande7@gmail.com" {
-		t.Fatalf("default recipient is wrong: %s", got)
+func TestNoDefaultRecipient(t *testing.T) {
+	if got := Defaults().Recipient; got != "" {
+		t.Fatalf("a recipient must not be set by default: %s", got)
 	}
 }
 
@@ -204,5 +205,19 @@ func TestWatches(t *testing.T) {
 		if got := cfg.Watches(testCase.provider); got != testCase.want {
 			t.Fatalf("%s/%s: got %v want %v", testCase.providers, testCase.provider, got, testCase.want)
 		}
+	}
+}
+
+func TestLoadKeepsExistingRecipient(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"recipient":"old@example.com"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Recipient != "old@example.com" {
+		t.Fatalf("existing recipient was changed: %q", loaded.Recipient)
 	}
 }

@@ -85,10 +85,10 @@ $env:GOARCH = "amd64"
 go build -trimpath -o carryon.exe ./cmd/carryon
 ```
 
-Create the state folder and config:
+Create the state folder and config, and set your recipient:
 
 ```powershell
-.\carryon.exe init
+.\carryon.exe init --email you@example.com
 ```
 
 That writes `%APPDATA%\CarryOn\config.json` and `%APPDATA%\CarryOn\.env`. Put the keys in `.env`:
@@ -98,14 +98,14 @@ RESEND_API_KEY=re_...
 GEMINI_API_KEY=...
 ```
 
-The default recipient is `prajwalchahande7@gmail.com` and the default sender is `onboarding@resend.dev`. The Resend onboarding sender can only deliver to the email address on your Resend account. To send elsewhere, verify a domain in Resend and change `sender` in `config.json`.
+There is no default recipient. Set one with `carryon init --email you@example.com`; without one, emails stay queued and the log says so once. The default sender is `onboarding@resend.dev`. The Resend onboarding sender can only deliver to the email address on your Resend account. To send elsewhere, verify a domain in Resend and change `sender` in `config.json`.
 
 `config.json` fields:
 
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `providers` | `both` | `claude`, `codex`, or `both` |
-| `recipient` | `prajwalchahande7@gmail.com` | Where email goes |
+| `recipient` | empty | Where email goes; set with `carryon init --email` |
 | `sender` | `onboarding@resend.dev` | Verified Resend sender |
 | `gemini_model` | `gemini-3.5-flash-lite` | Model used for decisions |
 | `claude_bin` | empty | Optional explicit Claude executable |
@@ -133,7 +133,7 @@ The task starts at sign-in, restarts after a failure, and allows only one instan
 ## Commands
 
 ```
-carryon init [--providers claude|codex|both]  create the state folder, config, and .env
+carryon init [--providers claude|codex|both] [--email you@example.com]  create the state folder, config, and .env
 carryon watch [--once] [--interval 60s]
 carryon status [--json]
 carryon decisions [--limit 20]
@@ -231,7 +231,7 @@ CarryOn rejects `.cmd`, `.bat`, and `.ps1` shims. It searches `codex` on `PATH` 
 
 **No email arrives**
 
-Check your spam folder, then `carryon status` for the outbox. The Resend onboarding sender can only send to the account email. Verify the sender in Resend for any other address.
+If no recipient is set, emails stay queued; run `carryon init --email you@example.com`. Otherwise check your spam folder, then `carryon status` for the outbox. The Resend onboarding sender can only send to the account email. Verify the sender in Resend for any other address.
 
 **Gemini failed**
 
@@ -275,3 +275,4 @@ Policy changes are recorded here as the build evolves.
 - **2026-10-27 - Short HTML and text emails.** Subjects name the tool and folder, and the body uses short bold labels: Project, Next step, Why, Changed, Agent said, and a Continue by hand command. Resend receives both HTML and a plain-text fallback.
 - **2026-10-27 - Shorter commands.** `simulate` picks the newest session, `log` follows the log, and `reset` deletes state after a confirmation. `--session` and `--yes` keep the explicit paths available.
 - **2026-10-27 - Provider selection.** `providers` in `config.json` accepts `claude`, `codex`, or `both`; `init --providers` sets it. The watcher reads only the selected tools and closes incidents for a disabled tool without resuming.
+- **2026-10-27 - No default recipient.** A new config starts with an empty recipient. `init --email` sets it, existing configs keep theirs, and without one emails stay queued with a single log warning.

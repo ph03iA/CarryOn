@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	DefaultRecipient    = "prajwalchahande7@gmail.com"
 	DefaultSender       = "onboarding@resend.dev"
 	DefaultGeminiModel  = "gemini-3.5-flash-lite"
 	DefaultProviders    = "both"
@@ -48,7 +47,6 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		Providers:      DefaultProviders,
-		Recipient:      DefaultRecipient,
 		Sender:         DefaultSender,
 		GeminiModel:    DefaultGeminiModel,
 		PollSeconds:    DefaultPollSeconds,
@@ -63,7 +61,6 @@ func Defaults() Config {
 func (c Config) Normalize() Config {
 	defaults := Defaults()
 	fill(&c.Providers, defaults.Providers)
-	fill(&c.Recipient, defaults.Recipient)
 	fill(&c.Sender, defaults.Sender)
 	fill(&c.GeminiModel, defaults.GeminiModel)
 	clampInt(&c.PollSeconds, 15, 3600, defaults.PollSeconds)

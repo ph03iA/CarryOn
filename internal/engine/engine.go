@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,6 +41,8 @@ type Engine struct {
 
 	mu      sync.Mutex
 	running bool
+
+	recipientOnce sync.Once
 
 	lastOutcome resume.Outcome
 }
@@ -217,6 +220,12 @@ const maxAttempts = 8
 
 // deliverOutbox sends queued emails, retrying transient failures.
 func (e *Engine) deliverOutbox(ctx context.Context) error {
+	if strings.TrimSpace(e.Config.Recipient) == "" {
+		e.recipientOnce.Do(func() {
+			e.logErr("no recipient set; run carryon init --email you@example.com")
+		})
+		return nil
+	}
 	if e.Sender == nil {
 		return nil
 	}

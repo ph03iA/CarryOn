@@ -39,3 +39,23 @@ func TestWatchLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestRecipientAfterInit(t *testing.T) {
+	cfg := config.Defaults()
+	cfg.Recipient = "old@example.com"
+
+	kept, err := recipientAfterInit(cfg, nil)
+	if err != nil || kept.Recipient != "old@example.com" {
+		t.Fatalf("no flag should keep the recipient: %+v %v", kept, err)
+	}
+	changed, err := recipientAfterInit(cfg, []string{"--email", "you@example.com"})
+	if err != nil || changed.Recipient != "you@example.com" {
+		t.Fatalf("flag should set the recipient: %+v %v", changed, err)
+	}
+	if _, err := recipientAfterInit(cfg, []string{"--email=not-an-email"}); err == nil {
+		t.Fatal("want an error for an invalid address")
+	}
+	if _, err := recipientAfterInit(cfg, []string{"--email", "Name <you@example.com>"}); err == nil {
+		t.Fatal("want an error for a display name")
+	}
+}

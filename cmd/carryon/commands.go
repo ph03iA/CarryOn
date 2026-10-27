@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	netmail "net/mail"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ph03iA/CarryOn/internal/config"
@@ -72,6 +74,10 @@ func runInit(_ context.Context, paths config.Paths, args []string) error {
 	if err != nil {
 		return err
 	}
+	cfg, err = recipientAfterInit(cfg, args)
+	if err != nil {
+		return err
+	}
 	if err := config.Save(paths.Config, cfg); err != nil {
 		return err
 	}
@@ -84,7 +90,11 @@ func runInit(_ context.Context, paths config.Paths, args []string) error {
 	fmt.Println("  1. Put your keys in", paths.Env)
 	fmt.Println("     RESEND_API_KEY=re_...")
 	fmt.Println("     GEMINI_API_KEY=...")
-	fmt.Printf("  2. Emails go to %s from %s\n", cfg.Recipient, cfg.Sender)
+	if cfg.Recipient == "" {
+		fmt.Println("  2. No recipient set. Add one with: carryon init --email you@example.com")
+	} else {
+		fmt.Printf("  2. Emails go to %s from %s\n", cfg.Recipient, cfg.Sender)
+	}
 	fmt.Println("  3. Run: carryon watch")
 	fmt.Println("  4. Install the logon task: carryon service install")
 	return nil
@@ -159,7 +169,11 @@ func runStatus(_ context.Context, paths config.Paths, args []string) error {
 	}
 	fmt.Printf("CarryOn %s - state in %s\n", version, paths.Dir)
 	fmt.Printf("Watching: %s\n", watchLabel(cfg.Providers))
-	fmt.Printf("Recipient: %s  Sender: %s  Model: %s\n\n", cfg.Recipient, cfg.Sender, cfg.GeminiModel)
+	recipient := cfg.Recipient
+	if recipient == "" {
+		recipient = "(not set)"
+	}
+	fmt.Printf("Recipient: %s  Sender: %s  Model: %s\n\n", recipient, cfg.Sender, cfg.GeminiModel)
 	printIncidents(status.Incidents)
 	printResumes(status.Resumes)
 	printEmails(status.Emails)
@@ -222,6 +236,21 @@ func shortID(id string) string {
 		return id
 	}
 	return id[:12]
+}
+
+// recipientAfterInit applies --email, keeping the current value otherwise.
+func recipientAfterInit(cfg config.Config, args []string) (config.Config, error) {
+	value, ok := parseFlag(args, "--email")
+	if !ok {
+		return cfg, nil
+	}
+	trimmed := strings.TrimSpace(value)
+	address, err := netmail.ParseAddress(trimmed)
+	if err != nil || address.Name != "" || address.Address != trimmed {
+		return cfg, fmt.Errorf("email must be one mailbox, got %q", value)
+	}
+	cfg.Recipient = address.Address
+	return cfg, nil
 }
 
 // providersAfterInit applies --providers, keeping the current value otherwise.

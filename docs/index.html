@@ -469,7 +469,7 @@ Continue by hand: claude --resume bc7a02f5-1234-5678-9abc-def012345678</code></p
         <figcaption>Example: carryon status</figcaption>
         <pre><code>CarryOn 0.1.0 - state in C:\Users\prajw\AppData\Local\Temp\carryon-site-demo2
 Watching: both
-Recipient: prajwalchahande7@gmail.com  Sender: onboarding@resend.dev  Model: gemini-3.5-flash-lite
+Recipient: you@example.com  Sender: onboarding@resend.dev  Model: gemini-3.5-flash-lite
 
 Incidents (1)
   claude 5-hour     finished               reset 2026-10-27 20:30  the task is complete
@@ -524,7 +524,7 @@ Emails (1)
       <h2 id="setup-title">Setup</h2>
     </div>
     <div class="part-body">
-      <p>Run these in PowerShell. You need Claude Code signed in with a Pro or Max plan, or Codex signed in with a ChatGPT plan, plus a Resend key and a Gemini key.</p>
+      <p>Run these in PowerShell. You need Claude Code signed in with a Pro or Max plan, or Codex signed in with a ChatGPT plan, plus a Resend key, a Gemini key, and an email address.</p>
 
       <div class="commands">
         <div class="command">
@@ -541,10 +541,10 @@ go build -trimpath -o carryon.exe ./cmd/carryon</code></pre>
             <p class="command-label">Create the state folder and config</p>
             <button class="copy" type="button" data-target="cmd-init">Copy</button>
           </div>
-          <pre><code id="cmd-init">.\carryon.exe init</code></pre>
+          <pre><code id="cmd-init">.\carryon.exe init --email you@example.com</code></pre>
         </div>
 
-        <p class="output-note">Watch one tool with <code>.\carryon.exe init --providers claude</code> or <code>codex</code>. The default is both.</p>
+        <p class="output-note">Watch one tool with <code>.\carryon.exe init --providers claude</code> or <code>codex</code>. The default is both. Without <code>--email</code>, emails stay queued.</p>
 
         <div class="command">
           <div class="command-head">
