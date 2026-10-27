@@ -526,6 +526,7 @@ Emails (1)
           <button class="copy" type="button" data-target="cmd-setup-windows">Copy</button>
           <p>Run <code>init --email</code> again to change the recipient. Without <code>--email</code>, CarryOn keeps the saved address. The recipient is saved in <code>config.json</code>; <code>.env</code> holds your API keys.</p>
           <p>CarryOn watches both Claude Code and Codex by default. Add <code>--providers claude</code> or <code>--providers codex</code> to the <code>init</code> command to watch only one.</p>
+          <p>To change providers later, stop the running watcher with Ctrl+C, rerun <code>init</code> with <code>--providers claude</code>, <code>--providers codex</code>, or <code>--providers both</code>, then start <code>watch</code> again. The watcher loads its settings at startup. If you use the background service, change providers with <code>init</code> first, then restart the service using the commands under <a href="#daily-use">Use it every day</a>.</p>
           <p>Manually create a plain-text file named <code>.env</code> in CarryOn's state folder using any text editor:</p>
           <p><strong>Windows:</strong> <code>%APPDATA%\CarryOn\.env</code><br>
           <strong>macOS:</strong> <code>~/Library/Application Support/CarryOn/.env</code><br>
@@ -609,7 +610,7 @@ RESEND_API_KEY=</code></pre>
         </div></li>
       </ol>
 
-      <h3>Use it every day</h3>
+      <h3 id="daily-use">Use it every day</h3>
       <ul class="plain">
         <li>Optional: run <code>go install -trimpath ./cmd/carryon</code>, then add <code>$(go env GOPATH)/bin</code> (on Windows <code>%USERPROFILE%\go\bin</code>) to your PATH and restart the terminal so <code>carryon</code> works anywhere.</li>
         <li>Install the background service with <code>carryon service install</code>. On Windows, run it from PowerShell opened with "Run as administrator" for the hidden S4U task; without admin you get a task that shows a console window. On macOS it writes <code>~/Library/LaunchAgents/dev.carryon.plist</code> and loads it with <code>launchctl</code>. On Linux it writes <code>~/.config/systemd/user/carryon.service</code> and enables it with <code>systemctl --user</code>.</li>

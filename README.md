@@ -135,6 +135,8 @@ Windows PowerShell:
 
 CarryOn watches both Claude Code and Codex by default. Add `--providers claude` or `--providers codex` to the `init` command to watch only one.
 
+To change providers later, stop the running watcher with Ctrl+C, rerun `init` with `--providers claude`, `--providers codex`, or `--providers both`, then start `watch` again. The watcher loads its settings at startup. If you use the background service, change providers with `init` first, then restart the service using the commands under [Use it every day](#use-it-every-day).
+
 To change the saved recipient later, rerun the `init --email` command above with your real email. Running `init` without `--email` keeps the saved address. The recipient is stored in `config.json`; `.env` holds API keys.
 
 Manually create a plain-text file named `.env` in CarryOn's state folder using any text editor:
@@ -342,7 +344,7 @@ carryon service install|uninstall|status
 carryon version
 ```
 
-By default CarryOn watches both tools. To watch one, run `carryon init --providers claude` or `carryon init --providers codex`. The watcher reads usage and resumes sessions only for the selected tools; incidents already recorded for a disabled tool are closed without resuming on the next cycle.
+By default CarryOn watches both tools. To watch one, run `carryon init --providers claude` or `carryon init --providers codex`; use `carryon init --providers both` to watch both again. Restart the watcher or background service after changing providers. The watcher reads usage and resumes sessions only for the selected tools; incidents already recorded for a disabled tool are closed without resuming on the first cycle after restarting.
 
 `carryon simulate` fakes the limit and its reset, then uses the real Gemini call, the real agent resume, and real email. Without `--session`, it skips sessions written to in the last 2 minutes, picks the newest older Claude Code session, or the newest older Codex session with `simulate codex`, and asks before starting with the session, folder, and ID. `carryon log` follows the log file until Ctrl+C. `carryon reset` deletes the state database after a confirmation prompt; `--yes` skips it. Config and keys are kept.
 
