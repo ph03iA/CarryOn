@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CarryOn: a manual for resuming work through usage limits</title>
-<meta name="description" content="CarryOn is a local Windows agent that watches Claude Code and Codex usage, waits for a confirmed reset, asks Gemini whether to continue, and resumes the session by ID.">
+<meta name="description" content="CarryOn is a local agent that watches Claude Code and Codex usage, waits for a confirmed reset, asks Gemini whether to continue, and resumes the session by ID.">
 <meta name="theme-color" content="#f3efe4" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1c1a17" media="(prefers-color-scheme: dark)">
 <style>
@@ -370,7 +370,7 @@ footer .colophon { flex: 1 1 100%; }
 <header class="masthead">
   <div class="wrap">
     <p class="wordmark">CarryOn</p>
-    <p class="edition">A local Windows agent</p>
+    <p class="edition">A local agent</p>
     <nav aria-label="Sections">
       <a href="#works">How it works</a>
       <a href="#decides">Decisions</a>
@@ -389,8 +389,8 @@ footer .colophon { flex: 1 1 100%; }
   <section class="hero wrap" aria-labelledby="title">
     <p class="kicker">Usage limits, handled locally</p>
     <h1 id="title">Keep your work going when the limit runs out</h1>
-    <p class="lede">CarryOn is a small Windows program that watches your Claude Code and Codex plan usage every minute without sending a prompt. When a limit runs out it records the incident, waits for the reset, asks Gemini whether the cut-off session is worth continuing, and resumes that session by its ID. You get one email when the limit comes back, not when it runs out.</p>
-    <p class="hero-meta">Windows 10 or 11. Go 1.26 or newer. The watcher and the agents run on your own machine.</p>
+    <p class="lede">CarryOn is a small local program that watches your Claude Code and Codex plan usage every minute without sending a prompt. When a limit runs out it records the incident, waits for the reset, asks Gemini whether the cut-off session is worth continuing, and resumes that session by its ID. You get one email when the limit comes back, not when it runs out.</p>
+    <p class="hero-meta">Windows, macOS, or Linux. Go 1.26 or newer. The watcher and the agents run on your own machine.</p>
   </section>
 
   <section class="part wrap" id="what" aria-labelledby="what-title">
@@ -514,7 +514,7 @@ Emails (1)
         <li>A reset counts only after a fresh reading taken after the reset time, under two minutes old, for the same account, with no window still at 100 percent.</li>
         <li>Resumes use the session ID, and CarryOn skips a session that was already continued after the cut-off.</li>
         <li>Each limit hit allows at most two resumes for its cut-off session.</li>
-        <li>Claude, Codex, and the usage probes run inside a Windows job object with kill on close, so a CarryOn crash kills the agent and its children.</li>
+        <li>Claude, Codex, and the usage probes run in a kill-on-close sandbox: a Windows Job Object, or a process group that receives <code>SIGKILL</code> on macOS and Linux.</li>
         <li>Both API keys are removed from every Claude and Codex process CarryOn starts.</li>
         <li>Secrets are redacted from session text before it goes to Gemini, and email bodies are redacted again before Resend.</li>
       </ul>
@@ -527,9 +527,9 @@ Emails (1)
       <h2 id="setup-title">Setup</h2>
     </div>
     <div class="part-body">
-      <p>Run these in PowerShell.</p>
+      <p>Run these in your shell. Windows differences are noted where commands differ.</p>
       <ul class="plain">
-        <li>Windows 10 or 11</li>
+        <li>Windows 10 or 11, macOS, or Linux</li>
         <li>Go 1.26 or newer</li>
         <li>Claude Code signed in with a Pro or Max plan, and/or Codex signed in with a ChatGPT plan</li>
         <li>A Gemini API key</li>
@@ -540,58 +540,70 @@ Emails (1)
       <ol class="steps">
         <li><div>
           <p>Clone the repository:</p>
-          <pre><code id="cmd-clone">git clone https://github.com/ph03iA/CarryOn.git; cd CarryOn</code></pre>
+          <pre><code id="cmd-clone">git clone https://github.com/ph03iA/CarryOn.git &amp;&amp; cd CarryOn</code></pre>
           <button class="copy" type="button" data-target="cmd-clone">Copy</button>
+          <p>On Windows, use <code>git clone https://github.com/ph03iA/CarryOn.git; cd CarryOn</code>.</p>
         </div></li>
         <li><div>
           <p>Build it:</p>
-          <pre><code id="cmd-build">go build -trimpath -o carryon.exe ./cmd/carryon</code></pre>
+          <pre><code id="cmd-build">go build -trimpath -o carryon ./cmd/carryon</code></pre>
           <button class="copy" type="button" data-target="cmd-build">Copy</button>
-          <p>If <code>go env GOARCH</code> prints <code>386</code>, first run <code>$env:GOARCH = "amd64"</code>.</p>
+          <p>On Windows, build <code>carryon.exe</code>: <code>go build -trimpath -o carryon.exe ./cmd/carryon</code>. If <code>go env GOARCH</code> prints <code>386</code>, set <code>GOARCH=amd64</code> first (PowerShell: <code>$env:GOARCH = "amd64"</code>).</p>
         </div></li>
         <li><div>
           <p>Set your recipient and add the Gemini key:</p>
-          <pre><code id="cmd-setup">.\carryon.exe init --email you@example.com
-notepad "$env:APPDATA\CarryOn\.env"</code></pre>
+          <pre><code id="cmd-setup">./carryon init --email you@example.com
+$EDITOR "$HOME/.config/CarryOn/.env"</code></pre>
           <button class="copy" type="button" data-target="cmd-setup">Copy</button>
-          <p>Add <code>GEMINI_API_KEY</code> (free from Google AI Studio). <code>RESEND_API_KEY</code> is optional: without it, <code>.\carryon.exe status --json</code> shows the queued email.</p>
+          <p>On macOS the file is <code>~/Library/Application Support/CarryOn/.env</code>. On Windows run <code>.\carryon.exe init --email you@example.com</code> and edit <code>"$env:APPDATA\CarryOn\.env"</code>.</p>
+          <p>Add <code>GEMINI_API_KEY</code> (free from Google AI Studio). <code>RESEND_API_KEY</code> is optional: without it, <code>./carryon status --json</code> shows the queued email.</p>
         </div></li>
         <li><div>
           <p>Make a test session. In a new empty folder, run <code>claude</code>, ask for a small multi-step task, stop it halfway, and type <code>/exit</code>.</p>
         </div></li>
         <li><div>
           <p>Replay it:</p>
-          <pre><code id="cmd-simulate">.\carryon.exe simulate --session &lt;id&gt;</code></pre>
+          <pre><code id="cmd-simulate">./carryon simulate --session &lt;id&gt;</code></pre>
           <button class="copy" type="button" data-target="cmd-simulate">Copy</button>
-          <p>The id is the one Claude prints when you exit. Or wait 2 minutes and run <code>.\carryon.exe simulate</code>, which asks before starting.</p>
+          <p>The id is the one Claude prints when you exit. Or wait 2 minutes and run <code>./carryon simulate</code>, which asks before starting. On Windows use <code>.\carryon.exe</code> in place of <code>./carryon</code>.</p>
         </div></li>
         <li><div>
           <p>Check the state:</p>
-          <pre><code id="cmd-check">.\carryon.exe status
-.\carryon.exe decisions</code></pre>
+          <pre><code id="cmd-check">./carryon status
+./carryon decisions</code></pre>
           <button class="copy" type="button" data-target="cmd-check">Copy</button>
         </div></li>
       </ol>
 
       <h3>Use it every day</h3>
       <ul class="plain">
-        <li>Optional: run <code>go install -trimpath ./cmd/carryon</code>, then add the install folder to your user PATH (on 32-bit Go it is <code>%USERPROFILE%\go\bin\windows_amd64</code>) and restart VS Code or the terminal so <code>carryon</code> works anywhere.</li>
-        <li>Background task: run <code>carryon service install</code> from PowerShell opened with "Run as administrator" to get the hidden S4U task. Without admin you get a task that shows a console window; minimise it, don't close it.</li>
+        <li>Optional: run <code>go install -trimpath ./cmd/carryon</code>, then add <code>$(go env GOPATH)/bin</code> (on Windows <code>%USERPROFILE%\go\bin</code>) to your PATH and restart the terminal so <code>carryon</code> works anywhere.</li>
+        <li>Install the background service with <code>carryon service install</code>. On Windows, run it from PowerShell opened with "Run as administrator" for the hidden S4U task; without admin you get a task that shows a console window. On macOS it writes <code>~/Library/LaunchAgents/dev.carryon.plist</code> and loads it with <code>launchctl</code>. On Linux it writes <code>~/.config/systemd/user/carryon.service</code> and enables it with <code>systemctl --user</code>.</li>
         <li>Start and stop it:</li>
       </ul>
-      <pre><code id="cmd-tasks">Start-ScheduledTask -TaskName CarryOn
-Stop-ScheduledTask -TaskName CarryOn</code></pre>
+      <pre><code id="cmd-tasks"># macOS
+launchctl kickstart -k gui/$(id -u)/dev.carryon
+launchctl kill SIGTERM gui/$(id -u)/dev.carryon
+
+# Linux
+systemctl --user restart carryon.service
+systemctl --user stop carryon.service</code></pre>
       <button class="copy" type="button" data-target="cmd-tasks">Copy</button>
+      <p>On Windows:</p>
+      <pre><code id="cmd-tasks-windows">Start-ScheduledTask -TaskName CarryOn
+Stop-ScheduledTask -TaskName CarryOn</code></pre>
+      <button class="copy" type="button" data-target="cmd-tasks-windows">Copy</button>
       <ul class="plain">
         <li>Check it with <code>carryon service status</code> and <code>carryon log</code>.</li>
-        <li><code>carryon reset</code> needs the background task stopped first.</li>
+        <li><code>carryon reset</code> needs the background service stopped first.</li>
       </ul>
 
       <h3>Checks</h3>
       <p>Live usage check, no prompt sent:</p>
-      <pre><code id="cmd-live">$env:CARRYON_LIVE = "1"; go test ./internal/quota -run TestLiveProbes -v</code></pre>
+      <pre><code id="cmd-live">CARRYON_LIVE=1 go test ./internal/quota -run TestLiveProbes -v</code></pre>
       <button class="copy" type="button" data-target="cmd-live">Copy</button>
-      <p>If Windows blocks the built exe or test binaries with "Application Control policy", see <a href="https://github.com/ph03iA/CarryOn/blob/main/README.md#troubleshooting">Smart App Control troubleshooting</a>.</p>
+      <p>On Windows: <code>$env:CARRYON_LIVE = "1"; go test ./internal/quota -run TestLiveProbes -v</code>.</p>
+      <p>On Windows, if the built exe or test binaries are blocked with "Application Control policy", see <a href="https://github.com/ph03iA/CarryOn/blob/main/README.md#troubleshooting">Smart App Control troubleshooting</a>.</p>
 
       <p class="output-note">The full README has the config fields, the troubleshooting notes, and the known limits.</p>
     </div>
@@ -603,7 +615,7 @@ Stop-ScheduledTask -TaskName CarryOn</code></pre>
       <h2 id="limits-title">Known limits</h2>
     </div>
     <div class="part-body prose">
-      <p>CarryOn is Windows only, and the Claude Code usage request it relies on is experimental, so a Claude Code update can change it. Print-mode permissions can still block edits. A machine that stays offline for a long time can lose or duplicate a queued email. The Claude cut-off fixture used by the tests is synthetic until a real cut-off is captured. The full list is in the <a href="https://github.com/ph03iA/CarryOn/blob/main/README.md#known-limits">Known limits section of the README</a>.</p>
+      <p>CarryOn runs on Windows, macOS, and Linux. The Claude Code usage request it relies on is experimental, so a Claude Code update can change it. Print-mode permissions can still block edits. Process containment differs by platform: Windows uses a Job Object, while macOS and Linux use process groups, so a child that leaves its group can survive. A machine that stays offline for a long time can lose or duplicate a queued email. The Claude cut-off fixture used by the tests is synthetic until a real cut-off is captured. The full list is in the <a href="https://github.com/ph03iA/CarryOn/blob/main/README.md#known-limits">Known limits section of the README</a>.</p>
     </div>
   </section>
 
@@ -626,7 +638,7 @@ Stop-ScheduledTask -TaskName CarryOn</code></pre>
         </div>
         <div>
           <h3>Stays on this machine</h3>
-          <p>Usage readings, incidents, resume records, decisions, the email outbox, the session logs, the configuration, and both API keys stay in %APPDATA%\CarryOn. CarryOn makes no other network calls.</p>
+          <p>Usage readings, incidents, resume records, decisions, the email outbox, the session logs, the configuration, and both API keys stay in the local state folder: <code>%APPDATA%\CarryOn</code> on Windows, <code>~/Library/Application Support/CarryOn</code> on macOS, and <code>~/.config/CarryOn</code> on Linux. CarryOn makes no other network calls.</p>
           <p>It never opens <code>~/.claude/.credentials.json</code>, <code>~/.codex/auth.json</code>, or a keychain entry, and it never prints a token.</p>
         </div>
       </div>

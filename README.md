@@ -2,7 +2,7 @@
 
 [Read the manual](https://ph03iA.github.io/CarryOn/)
 
-CarryOn keeps your Claude Code and Codex work going through usage limits. It runs in the background on Windows, checks plan usage every minute without spending any, waits for a confirmed reset, asks Gemini whether continuing is worthwhile, and resumes the session by ID. It emails you once when a limit comes back — never when a limit runs out.
+CarryOn keeps your Claude Code and Codex work going through usage limits. It runs in the background on Windows, macOS, and Linux, checks plan usage every minute without spending any, waits for a confirmed reset, asks Gemini whether continuing is worthwhile, and resumes the session by ID. It emails you once when a limit comes back — never when a limit runs out.
 
 It never sends a prompt while checking usage. It never reads Claude or Codex auth files.
 
@@ -64,15 +64,19 @@ Each limit hit allows at most two resumes for its cut-off session. A run interru
 
 ## Crash safety
 
-Every Claude, Codex, and probe process runs inside a Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. The process is started suspended, assigned to the job, then resumed. If CarryOn exits or crashes, Windows closes the job handle and kills the agent and all of its children. Timeouts use `TerminateJobObject`, not `taskkill`.
+Every Claude, Codex, and probe process is placed in a kill-on-close sandbox, so a CarryOn crash kills the agent and its children.
 
-If the job cannot be created or assigned, CarryOn refuses to start the agent.
+On Windows the process runs inside a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: it is started suspended, assigned to the job, then resumed, and Windows closes the job handle when CarryOn exits. Timeouts use `TerminateJobObject`, not `taskkill`.
+
+On macOS and Linux the process gets its own process group, and a timeout, cancellation, or CarryOn shutdown sends `SIGKILL` to the whole group. On Linux the child also sets `Pdeathsig`, so the kernel kills it if CarryOn dies without cleaning up.
+
+If the sandbox cannot be created or assigned, CarryOn refuses to start the agent.
 
 ## Setup
 
 Requirements:
 
-- Windows 10/11
+- Windows 10/11, macOS, or Linux
 - Go 1.26+
 - Claude Code signed in with a Pro/Max plan, and/or Codex signed in with a ChatGPT plan
 - A Gemini API key
@@ -80,7 +84,13 @@ Requirements:
 
 ## Try it in 5 minutes
 
+Commands below are for macOS and Linux. Windows differences are noted where commands differ.
+
 1. Clone the repository:
+
+```sh
+git clone https://github.com/ph03iA/CarryOn.git && cd CarryOn
+```
 
 ```powershell
 git clone https://github.com/ph03iA/CarryOn.git; cd CarryOn
@@ -88,43 +98,62 @@ git clone https://github.com/ph03iA/CarryOn.git; cd CarryOn
 
 2. Build it:
 
+```sh
+go build -trimpath -o carryon ./cmd/carryon
+```
+
 ```powershell
 go build -trimpath -o carryon.exe ./cmd/carryon
 ```
 
-If `go env GOARCH` prints `386`, first run `$env:GOARCH = "amd64"`.
+If `go env GOARCH` prints `386`, first run `export GOARCH=amd64` (PowerShell: `$env:GOARCH = "amd64"`).
 
 3. Set your recipient and add the Gemini key:
 
-```powershell
-.\carryon.exe init --email you@example.com
-notepad "$env:APPDATA\CarryOn\.env"
+```sh
+./carryon init --email you@example.com
+$EDITOR "$HOME/.config/CarryOn/.env"
 ```
 
-Add `GEMINI_API_KEY` (free from Google AI Studio). `RESEND_API_KEY` is optional: without it, `.\carryon.exe status --json` shows the queued email.
+On macOS the state folder is `~/Library/Application Support/CarryOn`. On Windows run `.\carryon.exe init --email you@example.com`, then `notepad "$env:APPDATA\CarryOn\.env"`.
+
+Add `GEMINI_API_KEY` (free from Google AI Studio). `RESEND_API_KEY` is optional: without it, `./carryon status --json` shows the queued email.
 
 4. Make a test session. In a new empty folder, run `claude`, ask for a small multi-step task, stop it halfway, and type `/exit`.
 
 5. Replay it:
 
-```powershell
-.\carryon.exe simulate --session <id>
+```sh
+./carryon simulate --session <id>
 ```
 
-The id is the one Claude prints when you exit. Or wait 2 minutes and run `.\carryon.exe simulate`, which asks before starting.
+The id is the one Claude prints when you exit. Or wait 2 minutes and run `./carryon simulate`, which asks before starting. On Windows use `.\carryon.exe` in place of `./carryon`.
 
 6. Check the state:
 
-```powershell
-.\carryon.exe status
-.\carryon.exe decisions
+```sh
+./carryon status
+./carryon decisions
 ```
 
 ## Use it every day
 
-- Optional: run `go install -trimpath ./cmd/carryon`, then add the install folder to your user PATH (on 32-bit Go it is `%USERPROFILE%\go\bin\windows_amd64`) and restart VS Code or the terminal so `carryon` works anywhere.
-- Background task: run `carryon service install` from PowerShell opened with "Run as administrator" to get the hidden S4U task. Without admin you get a task that shows a console window; minimise it, don't close it.
+- Optional: run `go install -trimpath ./cmd/carryon`, then add `$(go env GOPATH)/bin` (on Windows `%USERPROFILE%\go\bin`) to your PATH and restart the terminal so `carryon` works anywhere.
+- Install the background service with `carryon service install`:
+  - **Windows:** run it from PowerShell opened with "Run as administrator" to get the hidden S4U task. Without admin you get a task that shows a console window; minimise it, don't close it.
+  - **macOS:** writes `~/Library/LaunchAgents/dev.carryon.plist` and loads it with `launchctl`; it starts at login and restarts if it exits.
+  - **Linux:** writes `~/.config/systemd/user/carryon.service` and enables it with `systemctl --user`; it restarts on failure. A user systemd manager must be running (a normal login session).
 - Start and stop it:
+
+```sh
+# macOS
+launchctl kickstart -k gui/$(id -u)/dev.carryon
+launchctl kill SIGTERM gui/$(id -u)/dev.carryon
+
+# Linux
+systemctl --user restart carryon.service
+systemctl --user stop carryon.service
+```
 
 ```powershell
 Start-ScheduledTask -TaskName CarryOn
@@ -132,11 +161,15 @@ Stop-ScheduledTask -TaskName CarryOn
 ```
 
 - Check it with `carryon service status` and `carryon log`.
-- `carryon reset` needs the background task stopped first.
+- `carryon reset` needs the background service stopped first.
 
 ## Checks
 
 Live usage check, no prompt sent:
+
+```sh
+CARRYON_LIVE=1 go test ./internal/quota -run TestLiveProbes -v
+```
 
 ```powershell
 $env:CARRYON_LIVE = "1"; go test ./internal/quota -run TestLiveProbes -v
@@ -204,7 +237,7 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 
 ## Security
 
-- API keys load from the process environment or `%APPDATA%\CarryOn\.env`.
+- API keys load from the process environment or the state folder's `.env`: `%APPDATA%\CarryOn\.env` on Windows, `~/Library/Application Support/CarryOn/.env` on macOS, and `~/.config/CarryOn/.env` (or `$XDG_CONFIG_HOME/CarryOn/.env`) on Linux.
 - Both keys are removed from CarryOn's own environment and from every Claude/Codex child process.
 - The state database and key file are created with restrictive permissions.
 - No shell is used to spawn agents; every command is an argument array.
@@ -220,7 +253,7 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - A crash after a resume starts consumes one attempt; further resumes need a fresh decision.
 - The two-resume budget is per limit incident, not per session forever. A session cut off by a later window gets a fresh budget.
 - "Files changed" compares against a snapshot taken before the run: a stash commit when the folder was dirty, or the pre-run HEAD when it was clean. Commits made by the agent therefore appear too, and your pre-existing work does not.
-- One instance only: `watch` takes `Global\CarryOn` and exits if another watcher holds it. `simulate` does not take the lock; the watcher skips simulated incidents.
+- One instance only: `watch` takes a global mutex on Windows and an exclusive `flock` on `<state>/carryon.lock` on macOS and Linux, and exits if another watcher holds it. `simulate` does not take the lock; the watcher skips simulated incidents.
 - The cut-off search only accepts sessions written after the current window started, and retries once at reset time.
 - **Secrets cut at the clipping point.** The session tail is clipped by character count before redaction. A credential that straddles the cut can lose its recognisable prefix and survive; treat the excerpt as sensitive.
 - **Two simulations at once.** `simulate` has no lock, so two can run together, spend real Gemini and agent usage, and both try to resume the same session.
@@ -229,9 +262,10 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 - **Resuming a few minutes early.** A window still at 100% whose reset time has passed is treated as reset, because its reset is no longer in the future. CarryOn can therefore resume a few minutes before Claude reports the window as available, and the agent may hit the limit again immediately.
 - **Emails after long downtime.** The outbox retries transient Resend failures up to eight times (about two hours). A machine that stays offline longer than that, or past Resend's 24-hour idempotency window, can lose or duplicate an event.
 - **Edits to already-untracked files.** The pre-run snapshot records untracked paths and excludes them, so later edits to a file that was already untracked are not listed in "files changed".
-- Windows only. There are no systemd or launchd service files.
-- The logon task prefers `-LogonType S4U`, so it runs without a console window. If Windows needs admin rights or a "Log on as a batch job" policy, CarryOn falls back to an interactive logon task, which may briefly show a console window.
-- Smart App Control can block locally built unsigned executables. See Troubleshooting.
+- Process containment differs by platform: Windows uses a kill-on-close Job Object, while macOS and Linux use process groups and `SIGKILL`, with `Pdeathsig` on Linux. A child that deliberately leaves its process group can survive a Unix cleanup.
+- On Windows the logon task prefers `-LogonType S4U`, so it runs without a console window. If Windows needs admin rights or a "Log on as a batch job" policy, CarryOn falls back to an interactive logon task, which may briefly show a console window.
+- On macOS and Linux the service runs in the user's login session. It does not start before login and does not survive a logout.
+- On Windows, Smart App Control can block locally built unsigned executables. See Troubleshooting.
 
 ## Verified
 
@@ -258,11 +292,11 @@ go test -c -o "$env:TEMP\carryon-wsl\config.test" ./internal/config
 wsl -d Ubuntu -- "$(wslpath -a "$env:TEMP\carryon-wsl\config.test")"
 ```
 
-The Windows-only job-object tests (`internal/winjob`, and the process-spawning paths in `resume` and `quota`) still need to run on Windows.
+The process-spawning suites (`internal/winjob`, `internal/quota`, `internal/resume`) also have Unix tests; run them under WSL with the same command.
 
 **Codex not found**
 
-CarryOn rejects `.cmd`, `.bat`, and `.ps1` shims. It searches `codex` on `PATH` and then the npm vendor folder for the native `codex.exe`. Set `codex_bin` in `config.json` if yours lives elsewhere.
+On Windows, CarryOn rejects `.cmd`, `.bat`, and `.ps1` shims, then searches `codex` on `PATH` and the npm vendor folder for the native `codex.exe`. On macOS and Linux it uses the first `codex` on `PATH`. Set `codex_bin` in `config.json` if yours lives elsewhere.
 
 **No email arrives**
 
@@ -270,16 +304,17 @@ If no recipient is set, emails stay queued; run `carryon init --email you@exampl
 
 **Gemini failed**
 
-CarryOn does not resume when Gemini fails or returns invalid JSON. It emails the reason and stops. Check `carryon decisions` and `%APPDATA%\CarryOn\carryon.log`.
+CarryOn does not resume when Gemini fails or returns invalid JSON. It emails the reason and stops. Check `carryon decisions` and the state folder's `carryon.log`.
 
 ## Development
 
-```powershell
-$env:GOARCH = "amd64"
+```sh
 go build ./...
 go vet ./...
 go test ./...
 ```
+
+On Windows, if `go env GOARCH` prints `386`, set `$env:GOARCH = "amd64"` first. CI runs `go vet` and `go test` on Windows, macOS, and Linux.
 
 Tests use fake Claude/Codex CLIs, a fake Gemini transport, a fake Resend server, and fixture sessions. No real API runs in tests.
 
@@ -312,3 +347,4 @@ Policy changes are recorded here as the build evolves.
 - **2026-10-27 - Provider selection.** `providers` in `config.json` accepts `claude`, `codex`, or `both`; `init --providers` sets it. The watcher reads only the selected tools and closes incidents for a disabled tool without resuming.
 - **2026-10-27 - No default recipient.** A new config starts with an empty recipient. `init --email` sets it, existing configs keep theirs, and without one emails stay queued with a single log warning.
 - **2026-10-27 - One email per limit.** The finish email was removed. The back email now says "resumed <folder>" or "no resume needed", with the next step and resume command only when it resumed. The post-run decision is still stored and shown by `carryon decisions`.
+- **2026-10-27 - Cross-platform.** CarryOn runs on Windows, macOS, and Linux. `single` keeps the global mutex on Windows and uses a state-directory `flock` elsewhere; `service` installs a Scheduled Task, a launch agent, or a systemd user unit; `winjob` keeps Job Objects on Windows and uses a process group with `SIGKILL` (plus `Pdeathsig` on Linux) elsewhere.
