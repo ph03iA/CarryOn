@@ -224,3 +224,45 @@ func TestLargeCodexLogUsesFilenameIDAndHeadCwd(t *testing.T) {
 		t.Fatalf("cwd should come from the first line, got %q", found.Cwd)
 	}
 }
+
+func TestNewestSessionByModifiedTime(t *testing.T) {
+	root := t.TempDir()
+	source, err := os.ReadFile(filepath.Join("testdata", "claude", "cutoff", "proj-a", "11111111-1111-4111-8111-111111111111.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	older := filepath.Join(root, "proj-old", "aaaaaaaa-1111-4111-8111-111111111111.jsonl")
+	newer := filepath.Join(root, "proj-new", "bbbbbbbb-2222-4222-8222-222222222222.jsonl")
+	for _, path := range []string{older, newer} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, source, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldTime := time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)
+	newTime := time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(older, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(newer, newTime, newTime); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := Scanner{ClaudeRoot: root, MaxBytes: 8 << 20}
+	found, err := scanner.Newest(Claude)
+	if err != nil {
+		t.Fatalf("newest: %v", err)
+	}
+	if found.ID != "bbbbbbbb-2222-4222-8222-222222222222" {
+		t.Fatalf("wrong session picked: %s", found.ID)
+	}
+}
+
+func TestNewestSessionMissingRoot(t *testing.T) {
+	scanner := Scanner{CodexRoot: filepath.Join(t.TempDir(), "missing"), MaxBytes: 8 << 20}
+	if _, err := scanner.Newest(Codex); err != ErrNotFound {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
