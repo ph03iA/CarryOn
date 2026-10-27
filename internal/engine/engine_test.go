@@ -282,6 +282,25 @@ func TestFullJourneyWithRestart(t *testing.T) {
 	}
 }
 
+func TestReconcileForgetsRunGroupsLeftByACrash(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	// A pid that cannot be a live process group; Reconcile must still clear the row.
+	if err := h.db.SaveRunGroup(ctx, "crashed-resume", 0, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.engine.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	groups, err := h.db.RunGroups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 0 {
+		t.Fatalf("leftover run groups after Reconcile: %+v", groups)
+	}
+}
+
 func TestCrashUsesThePostRunDecision(t *testing.T) {
 	h := newHarness(t)
 	h.step(t)

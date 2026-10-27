@@ -22,6 +22,8 @@ type Spec struct {
 	SessionID string
 	Cwd       string
 	Prompt    string
+	// OnStart receives the agent's process-group id on macOS and Linux.
+	OnStart func(pgid int)
 }
 
 // Outcome is everything CarryOn reports after a run.
@@ -96,6 +98,7 @@ func (r Runner) Run(ctx context.Context, spec Spec) (Outcome, error) {
 		Stderr:     stderr,
 		Timeout:    r.timeout(),
 		CloseStdin: true,
+		OnStart:    spec.OnStart,
 	})
 	if err != nil {
 		return Outcome{}, err

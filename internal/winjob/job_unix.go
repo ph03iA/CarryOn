@@ -70,6 +70,9 @@ func Start(spec Spec) (*Process, error) {
 	if spec.CloseStdin {
 		stdin.Close()
 	}
+	if spec.OnStart != nil {
+		spec.OnStart(command.Process.Pid)
+	}
 	return &Process{
 		cmd: command, pgid: command.Process.Pid, timeout: spec.Timeout,
 		Stdin: stdin, Stdout: stdout,
@@ -97,6 +100,9 @@ func (p *Process) Wait(ctx context.Context) (Result, error) {
 	}
 	started := time.Now()
 	waitErr := p.waitWithTimeout(ctx)
+	// The leader has exited, so this only reaches children it left in the group,
+	// matching the Windows job's kill-on-close.
+	killGroup(p.pgid)
 	p.mu.Lock()
 	p.done = true
 	p.mu.Unlock()

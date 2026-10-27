@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,6 +15,12 @@ import (
 
 func TestMain(m *testing.M) {
 	switch os.Getenv("CARRYON_FAKE_MODE") {
+	case "leave-child":
+		// Start a heartbeat grandchild in the same group, then exit at once.
+		child := exec.Command(os.Args[0])
+		child.Env = fakeEnv("heartbeat")
+		child.Start()
+		return
 	case "stdin":
 		cwd, _ := os.Getwd()
 		io.ReadAll(os.Stdin)
@@ -74,6 +81,54 @@ func TestTimeoutTerminatesTheProcessGroup(t *testing.T) {
 		t.Fatal("expected a timeout")
 	}
 	assertStopped(t, filepath.Join(dir, "heartbeat.txt"))
+}
+
+func TestWaitKillsChildrenLeftInTheGroup(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	process, err := Start(Spec{Path: exe, Dir: dir, Env: fakeEnv("leave-child"), Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	path := filepath.Join(dir, "heartbeat.txt")
+	waitForFile(t, path)
+	result, err := process.Wait(context.Background())
+	if err != nil {
+		t.Fatalf("wait: %v", err)
+	}
+	if result.TimedOut || result.ExitCode != 0 {
+		t.Fatalf("leader should exit cleanly: %+v", result)
+	}
+	assertStopped(t, path)
+}
+
+func TestKillOrphanGroupStopsAGroupFromThisBoot(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	var pgid int
+	process, err := Start(Spec{Path: exe, Dir: dir, Env: fakeEnv("heartbeat"), OnStart: func(id int) { pgid = id }})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer process.Close()
+	path := filepath.Join(dir, "heartbeat.txt")
+	waitForFile(t, path)
+	if pgid == 0 {
+		t.Fatal("OnStart did not report the process group")
+	}
+	if KillOrphanGroup(pgid, time.Unix(1, 0)) {
+		t.Fatal("a group recorded before the last boot must not be killed")
+	}
+	if !KillOrphanGroup(pgid, time.Now()) {
+		t.Fatal("expected the orphaned group to be killed")
+	}
+	assertStopped(t, path)
 }
 
 func TestCloseStdinAfterStart(t *testing.T) {

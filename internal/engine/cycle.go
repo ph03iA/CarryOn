@@ -216,7 +216,16 @@ func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, fou
 
 	outcome, runErr := e.Runner.Run(ctx, resume.Spec{
 		Provider: incident.Provider, SessionID: found.ID, Cwd: found.Cwd, Prompt: prompt,
+		OnStart: func(pgid int) {
+			// Real time, not e.now(): Reconcile compares it with the machine's boot time.
+			if err := e.DB.SaveRunGroup(ctx, record.ID, pgid, time.Now()); err != nil {
+				e.logErr("record agent process group: %v", err)
+			}
+		},
 	})
+	if err := e.DB.DeleteRunGroup(ctx, record.ID); err != nil {
+		e.logErr("forget agent process group: %v", err)
+	}
 	if runErr != nil {
 		if err := e.DB.FailResume(ctx, record.ID, runErr.Error()); err != nil {
 			return true, err

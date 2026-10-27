@@ -23,6 +23,9 @@ type Spec struct {
 	Timeout time.Duration
 	// CloseStdin closes the stdin pipe after start, so the child sees EOF.
 	CloseStdin bool
+	// OnStart receives the child's process-group id right after it starts, on
+	// macOS and Linux only; a Windows job already dies with CarryOn.
+	OnStart func(pgid int)
 }
 
 // Result reports how a supervised process ended.

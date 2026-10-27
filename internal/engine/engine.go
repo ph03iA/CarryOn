@@ -17,6 +17,7 @@ import (
 	"github.com/ph03iA/CarryOn/internal/resume"
 	"github.com/ph03iA/CarryOn/internal/session"
 	"github.com/ph03iA/CarryOn/internal/store"
+	"github.com/ph03iA/CarryOn/internal/winjob"
 )
 
 // Runner continues a session. resume.Runner is the production implementation.
@@ -276,6 +277,9 @@ func retryDecision(email store.Email, sendErr error, now time.Time) (string, tim
 
 // Reconcile repairs state left behind by a crash.
 func (e *Engine) Reconcile(ctx context.Context) error {
+	if err := e.killOrphanedAgents(ctx); err != nil {
+		return err
+	}
 	interrupted, err := e.DB.ReconcileInterrupted(ctx)
 	if err != nil {
 		return err
@@ -285,6 +289,24 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 	}
 	if _, err := e.DB.ResetInFlightIncidents(ctx); err != nil {
 		return err
+	}
+	return nil
+}
+
+// killOrphanedAgents stops agents a crashed CarryOn left running on macOS and
+// Linux, so a new decision never runs alongside the old agent.
+func (e *Engine) killOrphanedAgents(ctx context.Context) error {
+	groups, err := e.DB.RunGroups(ctx)
+	if err != nil {
+		return err
+	}
+	for _, group := range groups {
+		if winjob.KillOrphanGroup(group.PGID, group.StartedAt) {
+			e.logf("stopped agent process group %d left running by a crash", group.PGID)
+		}
+		if err := e.DB.DeleteRunGroup(ctx, group.ResumeID); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -112,6 +112,12 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS run_groups (
+  resume_id  TEXT PRIMARY KEY,
+  pgid       INTEGER NOT NULL,
+  started_at INTEGER NOT NULL
+);
 `
 
 // Open opens or creates the database at path.
