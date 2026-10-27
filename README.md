@@ -116,7 +116,7 @@ If `go env GOARCH` prints `386`, first run `export GOARCH=amd64` (PowerShell: `$
 
 On Windows, run `.\carryon.exe init --email you@example.com`.
 
-Using any text editor, create or open a plain-text file named `.env` in CarryOn's state folder:
+Manually create a plain-text file named `.env` in CarryOn's state folder using any text editor:
 
 - **Windows:** `%APPDATA%\CarryOn\.env`
 - **macOS:** `~/Library/Application Support/CarryOn/.env`
@@ -214,7 +214,7 @@ There is no default recipient. Set one with `carryon init --email you@example.co
 ## Commands
 
 ```
-carryon init [--providers claude|codex|both] [--email you@example.com]  create the state folder, config, and .env
+carryon init [--providers claude|codex|both] [--email you@example.com]  create the state folder and config
 carryon watch [--once] [--interval 60s]
 carryon status [--json]
 carryon decisions [--limit 20]

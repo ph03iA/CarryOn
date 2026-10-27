@@ -81,13 +81,10 @@ func runInit(_ context.Context, paths config.Paths, args []string) error {
 	if err := config.Save(paths.Config, cfg); err != nil {
 		return err
 	}
-	if err := writeEnvTemplate(paths.Env); err != nil {
-		return err
-	}
 	fmt.Printf("CarryOn is set up in %s\n\n", paths.Dir)
 	fmt.Printf("Watching: %s\n", watchLabel(cfg.Providers))
 	fmt.Println("Next steps:")
-	fmt.Println("  1. Put your keys in", paths.Env)
+	fmt.Println("  1. Create", paths.Env, "and add your keys")
 	fmt.Println("     RESEND_API_KEY=re_...")
 	fmt.Println("     GEMINI_API_KEY=...")
 	if cfg.Recipient == "" {
@@ -98,14 +95,6 @@ func runInit(_ context.Context, paths config.Paths, args []string) error {
 	fmt.Println("  3. Run: carryon watch")
 	fmt.Println("  4. Install the logon task: carryon service install")
 	return nil
-}
-
-func writeEnvTemplate(path string) error {
-	if _, err := os.Stat(path); err == nil {
-		return nil
-	}
-	content := "# CarryOn secrets. Never commit this file.\nRESEND_API_KEY=\nGEMINI_API_KEY=\n"
-	return os.WriteFile(path, []byte(content), 0o600)
 }
 
 func runLog(ctx context.Context, paths config.Paths, _ []string) error {
