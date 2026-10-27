@@ -376,7 +376,6 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 
 ## Known limits
 
-- **Auto-resume of a real cut-off is not yet observed.** A real Claude limit message has been captured and matches the detector (see Verified), but in that run the session was continued by hand, so CarryOn correctly had nothing to resume. The test fixture in `internal/session/testdata/claude/cutoff` is still synthetic.
 - **Reopen by ID after a resume.** Once CarryOn resumes a session, the old terminal window is stale. Continue with `claude --resume <id>` or `codex exec resume <id>`; do not type into the old window.
 - `get_usage` is an experimental Claude Code control request. It is isolated in `internal/quota/claude.go` and may change upstream.
 - Print-mode permissions can still block edits even with `acceptEdits` / `workspace-write`.
@@ -402,9 +401,10 @@ CarryOn itself makes no other network calls. It never reads `~/.claude/.credenti
 
 ## Verified
 
-- **2026-10-26 — Codex resume writes files.** Codex 0.163.0 on Windows: created a disposable session, then ran `codex exec resume <id> "Create a file named smoke.txt ..." -c sandbox_mode="workspace-write"`. The file was created with bytes `6F-6B` (`ok`). This is the one-time write check, not an automated test.
+- **2026-10-26 — Codex resume writes files.** Codex 0.163.0 on Windows: created a disposable session, then ran `codex exec resume <id> "Create a file named smoke.txt ..." -c sandbox_mode="workspace-write"`. The file was created with bytes `6F-6B` (`ok`).
 - **2026-10-26 — Live usage probes.** The real Codex app-server and Claude `get_usage` probes both returned usage windows without sending a prompt.
-- **2026-10-27 — First real limit, end to end.** Claude Code 2.1.311 on Windows, CarryOn running as the background task. CarryOn detected the real Claude 5-hour limit at 100% (11:14 UTC, reset reported for 12:20 UTC). Claude wrote `You've hit your session limit · resets 5:50pm (Asia/Kolkata)` into the session log, which matches the cut-off detector. After the reset, CarryOn acted on the reported reset time and the "Claude Code is back: no resume needed" email arrived; nothing was resumed because the session had already been continued by hand. The run exposed two problems that are now fixed or documented: Claude's usage request often answers without its numbers when asked every minute (CarryOn no longer needs a fresh reading at reset), and the background task only sees keys in a `.env` it actually reads (the state folder or its working folder).
+- **2026-10-27 — Live five-hour reset and email confirmed.** Claude Code 2.1.311 on Windows: CarryOn detected the real five-hour limit, waited for its reported reset, and delivered the "Claude Code is back: no resume needed" email. It correctly skipped the session because it had already been continued by hand.
+- **2026-10-28 — Live session resume and email confirmed.** On Windows, after the real Claude weekly-limit reset at 3:30 am IST, CarryOn found the cut-off session, Gemini approved resuming it, and Claude continued the same saved conversation. The "Claude Code is back: resumed carryon" email was successfully received.
 
 ## Troubleshooting
 
