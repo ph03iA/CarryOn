@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	DefaultRecipient    = "prajwalchahande07@gmail.com"
+	DefaultRecipient    = "prajwalchahande7@gmail.com"
 	DefaultSender       = "onboarding@resend.dev"
-	DefaultGeminiModel  = "gemini-flash-latest"
+	DefaultGeminiModel  = "gemini-3.5-flash-lite"
 	DefaultPollSeconds  = 60
 	DefaultTimeoutMins  = 360
 	DefaultMaxResumes   = 2

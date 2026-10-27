@@ -138,8 +138,14 @@ func TestLoadSecretsPrefersEnvironment(t *testing.T) {
 	}
 }
 
-func TestDefaultRecipientHasTheDoubleZero(t *testing.T) {
-	if got := Defaults().Recipient; got != "prajwalchahande07@gmail.com" {
+func TestDefaultRecipient(t *testing.T) {
+	if got := Defaults().Recipient; got != "prajwalchahande7@gmail.com" {
 		t.Fatalf("default recipient is wrong: %s", got)
+	}
+}
+
+func TestDefaultGeminiModel(t *testing.T) {
+	if got := Defaults().GeminiModel; got != "gemini-3.5-flash-lite" {
+		t.Fatalf("default model is wrong: %s", got)
 	}
 }
