@@ -86,13 +86,14 @@ func (r Runner) Run(ctx context.Context, spec Spec) (Outcome, error) {
 	log := &tailBuffer{max: r.logLimit()}
 	started := time.Now()
 	result, err := winjob.Run(ctx, winjob.Spec{
-		Path:    binary,
-		Args:    args,
-		Dir:     spec.Cwd,
-		Env:     r.environment(),
-		Stdout:  log,
-		Stderr:  log,
-		Timeout: r.timeout(),
+		Path:       binary,
+		Args:       args,
+		Dir:        spec.Cwd,
+		Env:        r.environment(),
+		Stdout:     log,
+		Stderr:     log,
+		Timeout:    r.timeout(),
+		CloseStdin: true,
 	})
 	if err != nil {
 		return Outcome{}, err

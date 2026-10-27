@@ -5,6 +5,7 @@ package winjob
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,12 @@ func TestMain(m *testing.M) {
 	}
 	if mode == "sleeper" {
 		time.Sleep(30 * time.Second)
+		return
+	}
+	if mode == "stdin" {
+		cwd, _ := os.Getwd()
+		io.ReadAll(os.Stdin)
+		os.WriteFile(filepath.Join(cwd, "stdin-closed.txt"), []byte("eof"), 0o600)
 		return
 	}
 	if mode == "heartbeat" {
@@ -158,5 +165,36 @@ func TestWaitDelayDoesNotFailTheRun(t *testing.T) {
 	}
 	if time.Since(started) > 5*time.Second {
 		t.Fatalf("run took %s", time.Since(started))
+	}
+}
+
+func stdinEnv() []string {
+	env := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		if entry == "CARRYON_FAKE_MODE=stdin" {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env, "CARRYON_FAKE_MODE=stdin")
+}
+
+func TestCloseStdinAfterStart(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	result, err := Run(context.Background(), Spec{
+		Path: exe, Dir: dir, Env: stdinEnv(), CloseStdin: true, Timeout: 3 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if result.TimedOut {
+		t.Fatal("child did not see stdin EOF")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "stdin-closed.txt")); err != nil {
+		t.Fatalf("child did not report EOF: %v", err)
 	}
 }

@@ -26,6 +26,8 @@ type Spec struct {
 	Stdout  io.Writer // nil exposes a pipe as Process.Stdout
 	Stderr  io.Writer // nil discards stderr
 	Timeout time.Duration
+	// CloseStdin closes the stdin pipe after start, so the child sees EOF.
+	CloseStdin bool
 }
 
 // Process is a running child owned by a kill-on-close job.
@@ -103,6 +105,9 @@ func Start(spec Spec) (*Process, error) {
 		killProcess(command)
 		job.Close()
 		return nil, fmt.Errorf("resume suspended process: %w", err)
+	}
+	if spec.CloseStdin {
+		stdin.Close()
 	}
 	return &Process{cmd: command, job: job, timeout: spec.Timeout, Stdin: stdin, Stdout: stdout}, nil
 }
