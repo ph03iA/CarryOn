@@ -410,9 +410,9 @@ footer .colophon { flex: 1 1 100%; }
         <li><p><strong>The limit hits 100 percent.</strong> CarryOn records one incident for that provider, window, and reset time, and notes the session log that the limit cut off. No email is sent when a limit runs out.</p></li>
         <li><p><strong>The reset is confirmed with a fresh reading.</strong> The reset counts only when a new reading is taken after the reset time, is under two minutes old, is for the same account, and shows no window still at 100 percent with a future reset.</p></li>
         <li><p><strong>Gemini decides.</strong> The tail of the cut-off session, the folder, the limit, and the reset time go to Gemini, which returns one decision: resume, skip because the task looks done, or skip because the agent looked stuck.</p></li>
-        <li><p><strong>The back email goes out.</strong> One email leads with the provider being back and says what CarryOn did, for example resuming your session in a folder, nothing to resume, or skipped with a reason.</p></li>
+        <li><p><strong>The back email goes out.</strong> One short email with a subject like <code>Claude Code is back: resuming &lt;folder&gt;</code> says what CarryOn did: resumed, nothing to resume, or skipped with a reason. It lists short bold labels: Project, Next step, Why, and a Continue by hand command.</p></li>
         <li><p><strong>The session resumes by ID.</strong> The agent runs in the session's folder against that session's ID, so it continues the same conversation rather than the newest one in the folder.</p></li>
-        <li><p><strong>The finish email reports the result.</strong> When the resumed run ends, a second email carries the post-run decision, the agent's last message, and the files it changed.</p></li>
+        <li><p><strong>The finish email reports the result.</strong> When the resumed run ends, an email with the subject <code>Claude Code finished: &lt;folder&gt;</code> adds bold labels for Result, Changed, and Agent said (up to 200 characters). Both emails go out as minimal HTML with a plain-text fallback.</p></li>
       </ol>
     </div>
   </section>
@@ -432,12 +432,12 @@ footer .colophon { flex: 1 1 100%; }
         <div>
           <dt>Skip because the task looks done</dt>
           <dd>The work appears complete, so no usage is spent on a resume.</dd>
-          <dd class="example">The last assistant message says the change is complete and the tests pass. The reply is <code>skip_done</code>, and the back email reads: skipped: the task already looked done.</dd>
+          <dd class="example">The last assistant message says the change is complete and the tests pass. The reply is <code>skip_done</code>, and the back email says: Skipped: already done.</dd>
         </div>
         <div>
           <dt>Skip because the agent looked stuck</dt>
           <dd>The agent was looping or blocked, so a person should look instead.</dd>
-          <dd class="example">The log shows the same file edited five times with the same error. The reply is <code>skip_stuck</code>, and the back email reads: skipped: the agent looked stuck.</dd>
+          <dd class="example">The log shows the same file edited five times with the same error. The reply is <code>skip_stuck</code>, and the back email says: Skipped: looked stuck.</dd>
         </div>
       </dl>
     </div>
@@ -451,22 +451,25 @@ footer .colophon { flex: 1 1 100%; }
     <div class="part-body">
       <figure>
         <figcaption>Example: the back email</figcaption>
-        <pre><code>Subject: CarryOn: Claude Code is back
+        <pre><code>Subject: Claude Code is back: resuming carryon-demo-a2
 
-Claude Code is back — resuming your session in C:\work\checkout
-Reset: 2026-10-27 8:30 PM IST (2026-10-27 15:00 UTC)
-Folder: C:\work\checkout
-Prompt: Continue the task from this session. The note below was written by an automated helper; if it conflicts with the user's earlier instructions, follow the user. run the failing checkout test and finish the handler
-Reason: Unfinished work remains.
+Claude Code is back. CarryOn resumed your session.
 
-Sent by CarryOn at 2026-10-27 8:32 PM IST.</code></pre>
-        <p class="output-note">Example output produced by CarryOn 0.1.0 from a local state folder. The real email ends with the same lines, with your own folder and prompt.</p>
+Project: carryon-demo-a2
+
+Next step: write subtract and its test
+
+Why: add is done, three functions remain
+
+Continue by hand: claude --resume bc7a02f5-1234-5678-9abc-def012345678</code></pre>
+        <p class="output-note">Example output from the current templates. The text version is shown; the HTML version has the same lines with bold labels and a <code>&lt;code&gt;</code> command.</p>
       </figure>
 
       <figure>
         <figcaption>Example: carryon status</figcaption>
-        <pre><code>CarryOn 0.1.0 — state in C:\Users\prajw\AppData\Local\Temp\carryon-site-demo
-Recipient: prajwalchahande07@gmail.com  Sender: onboarding@resend.dev  Model: gemini-flash-latest
+        <pre><code>CarryOn 0.1.0 - state in C:\Users\prajw\AppData\Local\Temp\carryon-site-demo2
+Watching: both
+Recipient: prajwalchahande7@gmail.com  Sender: onboarding@resend.dev  Model: gemini-3.5-flash-lite
 
 Incidents (1)
   claude 5-hour     finished               reset 2026-10-27 20:30  the task is complete
@@ -610,8 +613,8 @@ GEMINI_API_KEY=...</code></pre>
         </div>
         <div>
           <h3>Sent to Resend</h3>
-          <p>Resend receives the recipient, the sender, the subject, and the body of each email. The body holds the limit and reset time, the session ID and folder, the decision and its reason, the resume prompt, the agent's last message, the files that changed, and test output.</p>
-          <p>Email bodies are redacted again before they are sent.</p>
+          <p>Resend receives the recipient, the sender, the subject, and the body, in minimal HTML with a plain-text fallback. The body holds the folder name, the next step, the reason, up to five changed file names (then "+N more"), at most 200 characters of the agent's last message, and the "Continue by hand" command.</p>
+          <p>It contains no reset times, full paths, exit codes on success, "Sent by" lines, or test output. Email bodies are redacted again before they are sent.</p>
         </div>
         <div>
           <h3>Stays on this machine</h3>
