@@ -230,6 +230,9 @@ h3 {
   color: var(--accent);
 }
 .steps strong { font-weight: 700; }
+.steps pre { margin-top: 10px; }
+.steps p + p { margin-top: 8px; }
+.steps .copy { margin-top: 8px; }
 
 /* Verdicts */
 
@@ -524,68 +527,73 @@ Emails (1)
       <h2 id="setup-title">Setup</h2>
     </div>
     <div class="part-body">
-      <p>Run these in PowerShell. You need Claude Code signed in with a Pro or Max plan, or Codex signed in with a ChatGPT plan, plus a Resend key, a Gemini key, and an email address.</p>
+      <p>Run these in PowerShell.</p>
+      <ul class="plain">
+        <li>Windows 10 or 11</li>
+        <li>Go 1.26 or newer</li>
+        <li>Claude Code signed in with a Pro or Max plan, and/or Codex signed in with a ChatGPT plan</li>
+        <li>A Gemini API key</li>
+        <li>Optional: a Resend API key. Without one, emails stay queued and <code>carryon status --json</code> shows them.</li>
+      </ul>
 
-      <div class="commands">
-        <div class="command">
-          <div class="command-head">
-            <p class="command-label">Build</p>
-            <button class="copy" type="button" data-target="cmd-build">Copy</button>
-          </div>
-          <pre><code id="cmd-build">$env:GOARCH = "amd64"
-go build -trimpath -o carryon.exe ./cmd/carryon</code></pre>
-        </div>
+      <h3>Try it in 5 minutes</h3>
+      <ol class="steps">
+        <li><div>
+          <p>Clone the repository:</p>
+          <pre><code id="cmd-clone">git clone https://github.com/ph03iA/CarryOn.git; cd CarryOn</code></pre>
+          <button class="copy" type="button" data-target="cmd-clone">Copy</button>
+        </div></li>
+        <li><div>
+          <p>Build it:</p>
+          <pre><code id="cmd-build">go build -trimpath -o carryon.exe ./cmd/carryon</code></pre>
+          <button class="copy" type="button" data-target="cmd-build">Copy</button>
+          <p>If <code>go env GOARCH</code> prints <code>386</code>, first run <code>$env:GOARCH = "amd64"</code>.</p>
+        </div></li>
+        <li><div>
+          <p>Set your recipient and add the Gemini key:</p>
+          <pre><code id="cmd-setup">.\carryon.exe init --email you@example.com
+notepad "$env:APPDATA\CarryOn\.env"</code></pre>
+          <button class="copy" type="button" data-target="cmd-setup">Copy</button>
+          <p>Add <code>GEMINI_API_KEY</code> (free from Google AI Studio). <code>RESEND_API_KEY</code> is optional: without it, <code>.\carryon.exe status --json</code> shows the queued email.</p>
+        </div></li>
+        <li><div>
+          <p>Make a test session. In a new empty folder, run <code>claude</code>, ask for a small multi-step task, stop it halfway, and type <code>/exit</code>.</p>
+        </div></li>
+        <li><div>
+          <p>Replay it:</p>
+          <pre><code id="cmd-simulate">.\carryon.exe simulate --session &lt;id&gt;</code></pre>
+          <button class="copy" type="button" data-target="cmd-simulate">Copy</button>
+          <p>The id is the one Claude prints when you exit. Or wait 2 minutes and run <code>.\carryon.exe simulate</code>, which asks before starting.</p>
+        </div></li>
+        <li><div>
+          <p>Check the state:</p>
+          <pre><code id="cmd-check">.\carryon.exe status
+.\carryon.exe decisions</code></pre>
+          <button class="copy" type="button" data-target="cmd-check">Copy</button>
+        </div></li>
+      </ol>
 
-        <div class="command">
-          <div class="command-head">
-            <p class="command-label">Create the state folder and config</p>
-            <button class="copy" type="button" data-target="cmd-init">Copy</button>
-          </div>
-          <pre><code id="cmd-init">.\carryon.exe init --email you@example.com</code></pre>
-        </div>
+      <h3>Use it every day</h3>
+      <ul class="plain">
+        <li>Optional: run <code>go install -trimpath ./cmd/carryon</code>, then add the install folder to your user PATH (on 32-bit Go it is <code>%USERPROFILE%\go\bin\windows_amd64</code>) and restart VS Code or the terminal so <code>carryon</code> works anywhere.</li>
+        <li>Background task: run <code>carryon service install</code> from PowerShell opened with "Run as administrator" to get the hidden S4U task. Without admin you get a task that shows a console window; minimise it, don't close it.</li>
+        <li>Start and stop it:</li>
+      </ul>
+      <pre><code id="cmd-tasks">Start-ScheduledTask -TaskName CarryOn
+Stop-ScheduledTask -TaskName CarryOn</code></pre>
+      <button class="copy" type="button" data-target="cmd-tasks">Copy</button>
+      <ul class="plain">
+        <li>Check it with <code>carryon service status</code> and <code>carryon log</code>.</li>
+        <li><code>carryon reset</code> needs the background task stopped first.</li>
+      </ul>
 
-        <p class="output-note">Watch one tool with <code>.\carryon.exe init --providers claude</code> or <code>codex</code>. The default is both. Without <code>--email</code>, emails stay queued.</p>
+      <h3>Checks</h3>
+      <p>Live usage check, no prompt sent:</p>
+      <pre><code id="cmd-live">$env:CARRYON_LIVE = "1"; go test ./internal/quota -run TestLiveProbes -v</code></pre>
+      <button class="copy" type="button" data-target="cmd-live">Copy</button>
+      <p>If Windows blocks the built exe or test binaries with "Application Control policy", see <a href="https://github.com/ph03iA/CarryOn/blob/main/README.md#troubleshooting">Smart App Control troubleshooting</a>.</p>
 
-        <div class="command">
-          <div class="command-head">
-            <p class="command-label">Put the keys in %APPDATA%\CarryOn\.env</p>
-            <button class="copy" type="button" data-target="cmd-env">Copy</button>
-          </div>
-          <pre><code id="cmd-env">RESEND_API_KEY=re_...
-GEMINI_API_KEY=...</code></pre>
-        </div>
-
-        <div class="command">
-          <div class="command-head">
-            <p class="command-label">Run it in the foreground first</p>
-            <button class="copy" type="button" data-target="cmd-watch">Copy</button>
-          </div>
-          <pre><code id="cmd-watch">.\carryon.exe watch</code></pre>
-        </div>
-
-        <div class="command">
-          <div class="command-head">
-            <p class="command-label">Install the logon task</p>
-            <button class="copy" type="button" data-target="cmd-service">Copy</button>
-          </div>
-          <pre><code id="cmd-service">.\carryon.exe service install</code></pre>
-        </div>
-
-        <div class="command">
-          <div class="command-head">
-            <p class="command-label">Everyday commands</p>
-            <button class="copy" type="button" data-target="cmd-daily">Copy</button>
-          </div>
-          <pre><code id="cmd-daily">.\carryon.exe simulate
-.\carryon.exe simulate codex
-.\carryon.exe simulate --session &lt;id&gt;
-.\carryon.exe log
-.\carryon.exe reset</code></pre>
-        </div>
-      </div>
-
-      <p class="output-note">simulate without <code>--session</code> skips sessions written to in the last 2 minutes and asks before starting. It picks the newest older Claude Code session, or the newest older Codex session with <code>simulate codex</code>. reset asks before deleting state; <code>--yes</code> skips the question.</p>
-      <p class="output-note">The full README has the rest, including the config fields, the troubleshooting notes, and the known limits.</p>
+      <p class="output-note">The full README has the config fields, the troubleshooting notes, and the known limits.</p>
     </div>
   </section>
 

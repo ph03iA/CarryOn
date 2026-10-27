@@ -75,30 +75,76 @@ Requirements:
 - Windows 10/11
 - Go 1.26+
 - Claude Code signed in with a Pro/Max plan, and/or Codex signed in with a ChatGPT plan
-- A Resend API key
 - A Gemini API key
+- Optional: a Resend API key. Without one, emails stay queued and `carryon status --json` shows them.
 
-Build:
+## Try it in 5 minutes
+
+1. Clone the repository:
 
 ```powershell
-$env:GOARCH = "amd64"
+git clone https://github.com/ph03iA/CarryOn.git; cd CarryOn
+```
+
+2. Build it:
+
+```powershell
 go build -trimpath -o carryon.exe ./cmd/carryon
 ```
 
-Create the state folder and config, and set your recipient:
+If `go env GOARCH` prints `386`, first run `$env:GOARCH = "amd64"`.
+
+3. Set your recipient and add the Gemini key:
 
 ```powershell
 .\carryon.exe init --email you@example.com
+notepad "$env:APPDATA\CarryOn\.env"
 ```
 
-That writes `%APPDATA%\CarryOn\config.json` and `%APPDATA%\CarryOn\.env`. Put the keys in `.env`:
+Add `GEMINI_API_KEY` (free from Google AI Studio). `RESEND_API_KEY` is optional: without it, `.\carryon.exe status --json` shows the queued email.
 
-```
-RESEND_API_KEY=re_...
-GEMINI_API_KEY=...
+4. Make a test session. In a new empty folder, run `claude`, ask for a small multi-step task, stop it halfway, and type `/exit`.
+
+5. Replay it:
+
+```powershell
+.\carryon.exe simulate --session <id>
 ```
 
-There is no default recipient. Set one with `carryon init --email you@example.com`; without one, emails stay queued and the log says so once. The default sender is `onboarding@resend.dev`. The Resend onboarding sender can only deliver to the email address on your Resend account. To send elsewhere, verify a domain in Resend and change `sender` in `config.json`.
+The id is the one Claude prints when you exit. Or wait 2 minutes and run `.\carryon.exe simulate`, which asks before starting.
+
+6. Check the state:
+
+```powershell
+.\carryon.exe status
+.\carryon.exe decisions
+```
+
+## Use it every day
+
+- Optional: run `go install -trimpath ./cmd/carryon`, then add the install folder to your user PATH (on 32-bit Go it is `%USERPROFILE%\go\bin\windows_amd64`) and restart VS Code or the terminal so `carryon` works anywhere.
+- Background task: run `carryon service install` from PowerShell opened with "Run as administrator" to get the hidden S4U task. Without admin you get a task that shows a console window; minimise it, don't close it.
+- Start and stop it:
+
+```powershell
+Start-ScheduledTask -TaskName CarryOn
+Stop-ScheduledTask -TaskName CarryOn
+```
+
+- Check it with `carryon service status` and `carryon log`.
+- `carryon reset` needs the background task stopped first.
+
+## Checks
+
+Live usage check, no prompt sent:
+
+```powershell
+$env:CARRYON_LIVE = "1"; go test ./internal/quota -run TestLiveProbes -v
+```
+
+If Windows blocks the built exe or test binaries with "Application Control policy", see [Smart App Control troubleshooting](#troubleshooting).
+
+## Configuration
 
 `config.json` fields:
 
@@ -116,19 +162,7 @@ There is no default recipient. Set one with `carryon init --email you@example.co
 | `session_tail_chars` | `16000` | Session tail sent to Gemini |
 | `decision_prompt_chars` | `500` | Cap on Gemini's next-step prompt |
 
-Run it in the foreground first:
-
-```powershell
-.\carryon.exe watch
-```
-
-Install the logon task:
-
-```powershell
-.\carryon.exe service install
-```
-
-The task starts at sign-in, restarts after a failure, and allows only one instance. State lives in `%APPDATA%\CarryOn\state.db`, so restarts are safe.
+There is no default recipient. Set one with `carryon init --email you@example.com`; without one, emails stay queued and the log says so once. The default sender is `onboarding@resend.dev`. The Resend onboarding sender can only deliver to the email address on your Resend account. To send elsewhere, verify a domain in Resend and change `sender` in `config.json`.
 
 ## Commands
 
