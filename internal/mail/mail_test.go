@@ -26,16 +26,6 @@ func backResume() (string, string, string) {
 	})
 }
 
-func finishDone() (string, string, string) {
-	return Render(Event{
-		Kind: KindResumeFinish, Provider: "claude", Action: "done",
-		SessionID: demoSession, SessionCwd: demoFolder,
-		Reason:      "all four functions and tests are written",
-		LastMessage: "Added subtract, multiply and divide with tests.",
-		Files:       []string{"calculator.py", "test_calculator.py"},
-	})
-}
-
 func TestResendSendsBothVersions(t *testing.T) {
 	var seenKey, seenAuth string
 	var seenBody map[string]any
@@ -130,7 +120,7 @@ func TestResendRequiresKey(t *testing.T) {
 
 func TestBackResumeRendersBothVersions(t *testing.T) {
 	subject, text, markup := backResume()
-	if subject != "Claude Code is back: resuming carryon-demo-a2" {
+	if subject != "Claude Code is back: resumed carryon-demo-a2" {
 		t.Fatalf("unexpected subject: %s", subject)
 	}
 	wantText := "Claude Code is back. CarryOn resumed your session.\n\n" +
@@ -151,104 +141,42 @@ func TestBackResumeRendersBothVersions(t *testing.T) {
 	}
 }
 
-func TestBackNothingToResume(t *testing.T) {
-	subject, text, markup := Render(Event{Kind: KindBack, Provider: "claude", Action: "none"})
-	if subject != "Claude Code is back: nothing to resume" {
-		t.Fatalf("unexpected subject: %s", subject)
-	}
-	if text != "Claude Code is back. Nothing to resume." {
-		t.Fatalf("unexpected text:\n%s", text)
-	}
-	if markup != "<p><b>Claude Code is back.</b> Nothing to resume.</p>" {
-		t.Fatalf("unexpected html:\n%s", markup)
-	}
-}
-
-func TestBackSkippedReasons(t *testing.T) {
-	cases := map[string]string{
-		"skip_done":        "Skipped: already done.",
-		"skip_stuck":       "Skipped: looked stuck.",
-		"skip_continued":   "Skipped: the session was already continued.",
-		"skip_no_decision": "Skipped: no Gemini decision.",
-	}
-	for action, sentence := range cases {
-		subject, text, _ := Render(Event{
-			Kind: KindBack, Provider: "claude", Action: action,
-			SessionCwd: demoFolder, Reason: "because",
-		})
-		if subject != "Claude Code is back: skipped carryon-demo-a2" {
-			t.Fatalf("%s: unexpected subject: %s", action, subject)
-		}
-		if !strings.HasPrefix(text, "Claude Code is back. "+sentence) {
-			t.Fatalf("%s: unexpected text:\n%s", action, text)
-		}
-		if !strings.Contains(text, "Project: carryon-demo-a2") || !strings.Contains(text, "Why: because") {
-			t.Fatalf("%s: missing fields:\n%s", action, text)
-		}
-	}
-}
-
-func TestFinishRendersBothVersions(t *testing.T) {
-	subject, text, markup := finishDone()
-	if subject != "Claude Code finished: carryon-demo-a2" {
-		t.Fatalf("unexpected subject: %s", subject)
-	}
-	wantText := "CarryOn finished the session. Result: done.\n\n" +
-		"Project: carryon-demo-a2\n\n" +
-		"Why: all four functions and tests are written\n\n" +
-		"Changed: calculator.py, test_calculator.py\n\n" +
-		"Agent said: Added subtract, multiply and divide with tests.\n\n" +
-		"Continue by hand: claude --resume " + demoSession
-	if text != wantText {
-		t.Fatalf("unexpected text:\n%s", text)
-	}
-	wantHTML := "<p><b>CarryOn finished the session.</b> Result: done.</p>\n" +
-		"<p><b>Project:</b> carryon-demo-a2</p>\n" +
-		"<p><b>Why:</b> all four functions and tests are written</p>\n" +
-		"<p><b>Changed:</b> calculator.py, test_calculator.py</p>\n" +
-		"<p><b>Agent said:</b> Added subtract, multiply and divide with tests.</p>\n" +
-		"<p>Continue by hand: <code>claude --resume " + demoSession + "</code></p>"
-	if markup != wantHTML {
-		t.Fatalf("unexpected html:\n%s", markup)
-	}
-}
-
-func TestFinishResultWords(t *testing.T) {
+func TestBackNoResumeNeeded(t *testing.T) {
 	cases := []struct {
-		event Event
-		want  string
+		action string
+		folder string
+		why    string
 	}{
-		{Event{Kind: KindResumeFinish, Action: "done"}, "Result: done."},
-		{Event{Kind: KindResumeFinish, Action: "resume_again"}, "Result: ran once more."},
-		{Event{Kind: KindResumeFinish, Action: "stop"}, "Result: stopped."},
-		{Event{Kind: KindResumeFinish, Action: "stop", ExitCode: 2}, "Result: stopped (exit 2)."},
-		{Event{Kind: KindResumeFinish, Action: "stop", TimedOut: true, ExitCode: -1}, "Result: stopped (timeout)."},
+		{"none", "", "no session was cut off"},
+		{"skip_done", demoFolder, "the task was already done"},
+		{"skip_continued", demoFolder, "you already continued it"},
+		{"skip_stuck", demoFolder, "the agent looked stuck"},
+		{"skip_no_decision", demoFolder, "no Gemini decision"},
 	}
 	for _, testCase := range cases {
-		_, text, _ := Render(testCase.event)
-		if !strings.Contains(text, testCase.want) {
-			t.Fatalf("want %q in:\n%s", testCase.want, text)
+		subject, text, markup := Render(Event{
+			Kind: KindBack, Provider: "claude", Action: testCase.action,
+			SessionCwd: testCase.folder, Reason: "a raw reason is not used",
+		})
+		if subject != "Claude Code is back: no resume needed" {
+			t.Fatalf("%s: unexpected subject: %s", testCase.action, subject)
 		}
-	}
-}
-
-func TestFinishLimitsChangedFilesAndMessage(t *testing.T) {
-	files := []string{"a.go", "b.go", "c.go", "d.go", "e.go", "f.go", "g.go"}
-	_, text, _ := Render(Event{
-		Kind: KindResumeFinish, Provider: "claude", Action: "done", SessionCwd: demoFolder,
-		Files: files, LastMessage: strings.Repeat("x", 250),
-	})
-	if !strings.Contains(text, "Changed: a.go, b.go, c.go, d.go, e.go, +2 more") {
-		t.Fatalf("file list not limited:\n%s", text)
-	}
-	agentLine := ""
-	for _, line := range strings.Split(text, "\n") {
-		if strings.HasPrefix(line, "Agent said: ") {
-			agentLine = strings.TrimPrefix(line, "Agent said: ")
+		first := "Claude Code is back. No resume was needed."
+		if !strings.HasPrefix(text, first) {
+			t.Fatalf("%s: unexpected text:\n%s", testCase.action, text)
 		}
-	}
-	if len([]rune(agentLine)) != 200 || !strings.HasSuffix(agentLine, "...") {
-		t.Fatalf("agent message not clipped to 200: %d %q", len([]rune(agentLine)), agentLine)
+		if !strings.Contains(text, "Why: "+testCase.why) {
+			t.Fatalf("%s: missing why %q:\n%s", testCase.action, testCase.why, text)
+		}
+		if strings.Contains(text, "Next step") || strings.Contains(text, "Continue by hand") {
+			t.Fatalf("%s: no-resume email has resume fields:\n%s", testCase.action, text)
+		}
+		if testCase.folder == "" && strings.Contains(text, "Project:") {
+			t.Fatalf("%s: empty project should be omitted:\n%s", testCase.action, text)
+		}
+		if !strings.Contains(markup, "<b>Claude Code is back.</b> No resume was needed.") {
+			t.Fatalf("%s: unexpected html:\n%s", testCase.action, markup)
+		}
 	}
 }
 
@@ -267,7 +195,7 @@ func TestNeedsYouEmail(t *testing.T) {
 
 func TestSimulatedEmailIsLabelled(t *testing.T) {
 	subject, text, markup := Render(Event{Kind: KindBack, Provider: "claude", Action: "none", Simulated: true})
-	if subject != "[SIMULATED] Claude Code is back: nothing to resume" {
+	if subject != "[SIMULATED] Claude Code is back: no resume needed" {
 		t.Fatalf("unexpected subject: %s", subject)
 	}
 	if !strings.HasPrefix(text, "Simulated run: no real limit was hit.\n\n") {
@@ -283,7 +211,7 @@ func TestCodexSubjectsAndCommands(t *testing.T) {
 		Kind: KindBack, Provider: "codex", Action: "resume",
 		SessionID: demoSession, SessionCwd: demoFolder, Prompt: "finish the parser",
 	})
-	if subject != "Codex is back: resuming carryon-demo-a2" {
+	if subject != "Codex is back: resumed carryon-demo-a2" {
 		t.Fatalf("unexpected subject: %s", subject)
 	}
 	if !strings.Contains(text, "Continue by hand: codex exec resume "+demoSession) {
@@ -293,10 +221,10 @@ func TestCodexSubjectsAndCommands(t *testing.T) {
 
 func TestHTMLEscapesValues(t *testing.T) {
 	_, text, markup := Render(Event{
-		Kind: KindResumeFinish, Provider: "claude", Action: "done",
-		SessionCwd: demoFolder, Reason: `<script>alert("x")</script>`,
-		LastMessage: "a < b & c > d",
-		Files:       []string{"<b>file</b>"},
+		Kind: KindBack, Provider: "claude", Action: "resume",
+		SessionID: demoSession, SessionCwd: `C:\work\a&b`,
+		Prompt: `a < b & c > d`,
+		Reason: `<script>alert("x")</script>`,
 	})
 	if strings.Contains(markup, "<script>") {
 		t.Fatalf("raw script tag in html:\n%s", markup)
@@ -305,10 +233,10 @@ func TestHTMLEscapesValues(t *testing.T) {
 		t.Fatalf("script not escaped:\n%s", markup)
 	}
 	if !strings.Contains(markup, "a &lt; b &amp; c &gt; d") {
-		t.Fatalf("message not escaped:\n%s", markup)
+		t.Fatalf("prompt not escaped:\n%s", markup)
 	}
-	if !strings.Contains(markup, "&lt;b&gt;file&lt;/b&gt;") {
-		t.Fatalf("file not escaped:\n%s", markup)
+	if !strings.Contains(markup, "a&amp;b") {
+		t.Fatalf("folder not escaped:\n%s", markup)
 	}
 	if !strings.Contains(text, `<script>`) {
 		t.Fatal("plain text should keep the original characters")
@@ -316,7 +244,7 @@ func TestHTMLEscapesValues(t *testing.T) {
 }
 
 func TestHTMLUsesOnlyAllowedTags(t *testing.T) {
-	_, _, markup := finishDone()
+	_, _, markup := backResume()
 	allowed := map[string]bool{"p": true, "b": true, "br": true, "code": true}
 	tags := regexp.MustCompile(`</?([a-zA-Z0-9]+)`).FindAllStringSubmatch(markup, -1)
 	for _, tag := range tags {
@@ -333,9 +261,9 @@ func TestHTMLUsesOnlyAllowedTags(t *testing.T) {
 
 func TestRedactsSecretsEverywhere(t *testing.T) {
 	subject, text, markup := Render(Event{
-		Kind: KindResumeFinish, Provider: "claude", Action: "done",
+		Kind: KindBack, Provider: "claude", Action: "resume",
 		SessionCwd: demoFolder, Reason: "token sk-abcdefghijklmnopqrstuvwx",
-		LastMessage: "RESEND_API_KEY=re_zyxwvutsrqponmlkjihgfedc",
+		Prompt: "RESEND_API_KEY=re_zyxwvutsrqponmlkjihgfedc",
 	})
 	for _, secret := range []string{"sk-abcdefghijklmnopqrstuvwx", "re_zyxwvutsrqponmlkjihgfedc"} {
 		for name, value := range map[string]string{"subject": subject, "text": text, "html": markup} {
@@ -349,18 +277,11 @@ func TestRedactsSecretsEverywhere(t *testing.T) {
 	}
 }
 
-func TestFinishWithoutSessionOmitsCommand(t *testing.T) {
-	_, text, _ := Render(Event{Kind: KindResumeFinish, Provider: "claude", Action: "done", SessionCwd: demoFolder})
-	if strings.Contains(text, "Continue by hand") {
-		t.Fatalf("command shown without a session:\n%s", text)
-	}
-}
-
-func TestNoTimesOrTestOutput(t *testing.T) {
-	_, text, markup := finishDone()
-	for _, unwanted := range []string{"Sent by", "UTC", "IST", "Test output"} {
+func TestBackHasNoTimesOrTestOutput(t *testing.T) {
+	_, text, markup := backResume()
+	for _, unwanted := range []string{"Sent by", "UTC", "IST", "Test output", "Agent said", "Changed:"} {
 		if strings.Contains(text, unwanted) || strings.Contains(markup, unwanted) {
-			t.Fatalf("unexpected %q in finish email", unwanted)
+			t.Fatalf("unexpected %q in back email", unwanted)
 		}
 	}
 }

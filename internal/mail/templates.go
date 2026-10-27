@@ -11,25 +11,20 @@ import (
 
 // Event kinds CarryOn emails.
 const (
-	KindBack         = "back"
-	KindNeedsYou     = "needs_you"
-	KindResumeFinish = "resume_finish"
+	KindBack     = "back"
+	KindNeedsYou = "needs_you"
 )
 
 // Event is everything a template may render.
 type Event struct {
-	Kind        string
-	Provider    string
-	SessionID   string
-	SessionCwd  string
-	Action      string
-	Reason      string
-	Prompt      string
-	ExitCode    int
-	TimedOut    bool
-	LastMessage string
-	Files       []string
-	Simulated   bool
+	Kind       string
+	Provider   string
+	SessionID  string
+	SessionCwd string
+	Action     string
+	Reason     string
+	Prompt     string
+	Simulated  bool
 }
 
 type line struct {
@@ -66,19 +61,10 @@ func subjectFor(event Event) string {
 	folder := folderName(event.SessionCwd)
 	switch event.Kind {
 	case KindBack:
-		switch event.Action {
-		case "resume":
-			return joinFolder(fmt.Sprintf("%s is back: resuming", provider), folder)
-		case "none":
-			return fmt.Sprintf("%s is back: nothing to resume", provider)
-		default:
-			return joinFolder(fmt.Sprintf("%s is back: skipped", provider), folder)
+		if event.Action == "resume" {
+			return joinFolder(fmt.Sprintf("%s is back: resumed", provider), folder)
 		}
-	case KindResumeFinish:
-		if folder == "" {
-			return fmt.Sprintf("%s finished the session", provider)
-		}
-		return fmt.Sprintf("%s finished: %s", provider, folder)
+		return fmt.Sprintf("%s is back: no resume needed", provider)
 	case KindNeedsYou:
 		return fmt.Sprintf("CarryOn needs you: %s reset not confirmed", provider)
 	default:
@@ -97,8 +83,6 @@ func bodyLines(event Event) []line {
 	switch event.Kind {
 	case KindBack:
 		return backLines(event)
-	case KindResumeFinish:
-		return finishLines(event)
 	case KindNeedsYou:
 		return needsYouLines(event)
 	default:
@@ -108,47 +92,44 @@ func bodyLines(event Event) []line {
 
 func backLines(event Event) []line {
 	provider := providerName(event.Provider)
-	lines := []line{firstLine(provider+" is back.", backTail(event.Action))}
-	addProject(&lines, event)
 	if event.Action == "resume" {
+		lines := []line{firstLine(provider+" is back.", " CarryOn resumed your session.")}
+		addProject(&lines, event)
 		addField(&lines, "Next step", event.Prompt)
+		addField(&lines, "Why", event.Reason)
+		if event.SessionID != "" {
+			lines = append(lines, commandLine(event))
+		}
+		return lines
 	}
-	addField(&lines, "Why", event.Reason)
-	if event.Action == "resume" && event.SessionID != "" {
-		lines = append(lines, commandLine(event))
-	}
-	return lines
-}
 
-func backTail(action string) string {
-	switch action {
-	case "resume":
-		return " CarryOn resumed your session."
-	case "skip_done":
-		return " Skipped: already done."
-	case "skip_stuck":
-		return " Skipped: looked stuck."
-	case "skip_continued":
-		return " Skipped: the session was already continued."
-	case "skip_no_decision":
-		return " Skipped: no Gemini decision."
-	case "skip_error":
-		return " Skipped: could not read the session log."
-	default:
-		return " Nothing to resume."
-	}
-}
-
-func finishLines(event Event) []line {
-	lines := []line{firstLine("CarryOn finished the session.", " Result: "+resultText(event)+".")}
+	lines := []line{firstLine(provider+" is back.", " No resume was needed.")}
 	addProject(&lines, event)
-	addField(&lines, "Why", event.Reason)
-	addField(&lines, "Changed", changedList(event.Files))
-	addField(&lines, "Agent said", clip(event.LastMessage, 200))
-	if event.SessionID != "" {
-		lines = append(lines, commandLine(event))
-	}
+	addField(&lines, "Why", backReason(event))
 	return lines
+}
+
+// backReason turns the decision into the plain words used in the email.
+func backReason(event Event) string {
+	switch event.Action {
+	case "skip_done":
+		return "the task was already done"
+	case "none":
+		return "no session was cut off"
+	case "skip_continued":
+		return "you already continued it"
+	case "skip_stuck":
+		return "the agent looked stuck"
+	case "skip_no_decision":
+		return "no Gemini decision"
+	case "skip_error":
+		return "the session log could not be read"
+	default:
+		if reason := clean(event.Reason); reason != "" {
+			return reason
+		}
+		return "no resume was needed"
+	}
 }
 
 func needsYouLines(event Event) []line {
@@ -156,25 +137,6 @@ func needsYouLines(event Event) []line {
 	lines := []line{firstLine("CarryOn needs you.", " The "+provider+" reset was not confirmed within 24 hours.")}
 	addProject(&lines, event)
 	return lines
-}
-
-func resultText(event Event) string {
-	word := "stopped"
-	switch event.Action {
-	case "done":
-		word = "done"
-	case "resume_again":
-		word = "ran once more"
-	case "could not start":
-		word = "could not start"
-	}
-	if event.TimedOut {
-		return word + " (timeout)"
-	}
-	if event.ExitCode != 0 {
-		return fmt.Sprintf("%s (exit %d)", word, event.ExitCode)
-	}
-	return word
 }
 
 func firstLine(bold, rest string) line {
@@ -218,37 +180,6 @@ func commandFor(provider, sessionID string) string {
 	default:
 		return "resume " + sessionID
 	}
-}
-
-func changedList(files []string) string {
-	cleaned := make([]string, 0, len(files))
-	for _, file := range files {
-		value := clean(file)
-		if value != "" {
-			cleaned = append(cleaned, value)
-		}
-	}
-	if len(cleaned) == 0 {
-		return ""
-	}
-	if len(cleaned) > 5 {
-		extra := len(cleaned) - 5
-		cleaned = append(cleaned[:5], fmt.Sprintf("+%d more", extra))
-	}
-	return strings.Join(cleaned, ", ")
-}
-
-// clip limits a value to max runes, including the ellipsis.
-func clip(value string, max int) string {
-	value = clean(value)
-	runes := []rune(value)
-	if len(runes) <= max {
-		return value
-	}
-	if max <= 3 {
-		return string(runes[:max])
-	}
-	return string(runes[:max-3]) + "..."
 }
 
 func clean(value string) string {

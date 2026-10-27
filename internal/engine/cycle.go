@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/ph03iA/CarryOn/internal/decision"
-	"github.com/ph03iA/CarryOn/internal/mail"
 	"github.com/ph03iA/CarryOn/internal/quota"
 	"github.com/ph03iA/CarryOn/internal/resume"
 	"github.com/ph03iA/CarryOn/internal/session"
@@ -222,8 +221,6 @@ func (e *Engine) runOneAttempt(ctx context.Context, incident store.Incident, fou
 		if err := e.DB.FailResume(ctx, record.ID, runErr.Error()); err != nil {
 			return true, err
 		}
-		e.lastOutcome = resume.Outcome{ExitCode: -1, LastMessage: runErr.Error()}
-		e.enqueueFinish(ctx, incident, "could not start", runErr.Error())
 		return true, e.closeIncident(ctx, incident, store.IncidentBlocked, "the resume could not start: "+runErr.Error())
 	}
 	if err := e.DB.FinishResume(ctx, record.ID, outcome.ExitCode, outcome.LastMessage, strings.Join(outcome.Files, ", ")); err != nil {
@@ -255,16 +252,6 @@ func (e *Engine) postDecision(ctx context.Context, incident store.Incident, foun
 		result.Action = decision.ActionStop
 		result.Reason = fmt.Sprintf("%s (stopped: the %d-resume limit was reached)", result.Reason, e.Config.MaxResumes)
 	}
-	if err := e.enqueue(ctx, resumeKey(record.ID, "finish", record.Attempts), mail.Event{
-		Kind: mail.KindResumeFinish, Provider: incident.Provider, Action: result.Action,
-		Reason: result.Reason, SessionID: found.ID, SessionCwd: found.Cwd,
-		ExitCode: outcome.ExitCode, TimedOut: outcome.TimedOut,
-		LastMessage: outcome.LastMessage, Files: outcome.Files,
-		Simulated: incident.Simulated,
-	}); err != nil {
-		return decision.Result{}, err
-	}
-	_ = e.deliverOutbox(ctx)
 	return result, nil
 }
 
@@ -295,23 +282,8 @@ func (e *Engine) blockOnDecision(ctx context.Context, incident store.Incident, s
 	}
 	if stage == "pre" {
 		_ = e.sendBack(ctx, incident, "skip_no_decision", "", reason)
-	} else {
-		e.enqueueFinish(ctx, incident, "no decision", reason)
 	}
 	return e.closeIncident(ctx, incident, store.IncidentBlocked, reason)
-}
-
-// enqueueFinish reports the end of a run that produced no decision.
-func (e *Engine) enqueueFinish(ctx context.Context, incident store.Incident, action, reason string) {
-	record, _ := e.DB.ResumeForIncident(ctx, incident.Provider, incident.SessionID, incident.ID)
-	outcome := e.lastOutcome
-	_ = e.enqueue(ctx, resumeKey(record.ID, "finish", record.Attempts), mail.Event{
-		Kind: mail.KindResumeFinish, Provider: incident.Provider, Action: action,
-		Reason: reason, SessionID: incident.SessionID, SessionCwd: incident.SessionCwd,
-		ExitCode: outcome.ExitCode, TimedOut: outcome.TimedOut,
-		LastMessage: outcome.LastMessage, Files: outcome.Files,
-		Simulated: incident.Simulated,
-	})
 }
 
 func (e *Engine) recordDecision(ctx context.Context, incident store.Incident, resumeID, stage string, result decision.Result) error {
@@ -340,10 +312,6 @@ func (e *Engine) closeIncident(ctx context.Context, incident store.Incident, sta
 	}
 	e.logf("incident %s -> %s: %s", incident.Provider, state, reason)
 	return nil
-}
-
-func resumeKey(resumeID, phase string, attempt int) string {
-	return fmt.Sprintf("resume:%s:%s:%d", resumeID, phase, attempt)
 }
 
 // incidentUpdate preserves the recorded session marker across state changes.

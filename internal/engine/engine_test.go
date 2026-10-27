@@ -251,18 +251,17 @@ func TestFullJourneyWithRestart(t *testing.T) {
 		t.Fatal("resume prompt must start with the fixed instruction")
 	}
 
-	combined := strings.Join(h.subjects(), "\n")
-	for _, message := range h.sender.sent {
-		combined += "\n" + message.Body
+	if len(h.sender.sent) != 1 {
+		t.Fatalf("want one email per limit, got %v", h.subjects())
 	}
-	for _, want := range []string{"is back", "resumed your session", "finished"} {
-		if !strings.Contains(combined, want) {
-			t.Fatalf("missing %q in emails:\n%s", want, combined)
+	message := h.sender.sent[0]
+	if !strings.Contains(message.Subject, "is back: resumed") {
+		t.Fatalf("unexpected subject: %s", message.Subject)
+	}
+	for _, want := range []string{"CarryOn resumed your session", "Next step:", "Continue by hand:"} {
+		if !strings.Contains(message.Body, want) {
+			t.Fatalf("missing %q in email:\n%s", want, message.Body)
 		}
-	}
-	finish := h.sender.sent[len(h.sender.sent)-1]
-	if !strings.Contains(finish.Body, "Done: retry helper added") || !strings.Contains(finish.Body, "retry.go") {
-		t.Fatalf("finish email missing outcome:\n%s", finish.Body)
 	}
 
 	incidents, _ := h.db.Incidents(context.Background())
@@ -331,15 +330,10 @@ func TestCrashUsesThePostRunDecision(t *testing.T) {
 		t.Fatalf("incident should be finished: %+v", stored[0])
 	}
 	messages := restarted.Sender.(*fakeSender).sent
-	if len(messages) == 0 {
-		t.Fatal("expected a finish email")
-	}
-	last := messages[len(messages)-1]
-	if strings.Contains(last.Body, "already continued") {
-		t.Fatalf("crash was misreported as an external continuation:\n%s", last.Body)
-	}
-	if !strings.Contains(last.Body, "interrupted run had already finished") {
-		t.Fatalf("finish email missing the post-run decision:\n%s", last.Body)
+	for _, message := range messages {
+		if strings.Contains(message.Body, "already continued") {
+			t.Fatalf("crash was misreported as an external continuation:\n%s", message.Body)
+		}
 	}
 	decisions, err := restarted.DB.Decisions(context.Background(), 10)
 	if err != nil {
@@ -379,8 +373,8 @@ func TestDecisionFailureBlocksAndEmails(t *testing.T) {
 		t.Fatalf("want exactly one back email, got %v", h.subjects())
 	}
 	last := h.sender.sent[len(h.sender.sent)-1]
-	if !strings.Contains(last.Body, "Skipped: no Gemini decision.") {
-		t.Fatalf("expected a no-decision back email:\n%s", last.Body)
+	if !strings.Contains(last.Body, "No resume was needed.") || !strings.Contains(last.Body, "Why: no Gemini decision") {
+		t.Fatalf("expected a no-resume back email:\n%s", last.Body)
 	}
 	incidents, _ := h.db.Incidents(context.Background())
 	if incidents[0].State != store.IncidentBlocked {
@@ -415,7 +409,7 @@ func TestAlreadyContinuedIsSkipped(t *testing.T) {
 		t.Fatalf("want exactly one back email, got %v", h.subjects())
 	}
 	last := h.sender.sent[len(h.sender.sent)-1]
-	if !strings.Contains(last.Body, "Skipped: the session was already continued.") {
+	if !strings.Contains(last.Body, "No resume was needed.") || !strings.Contains(last.Body, "Why: you already continued it") {
 		t.Fatalf("expected an already-continued back email:\n%s", last.Body)
 	}
 }
@@ -694,7 +688,7 @@ func TestConfirmedResetSendsOneBackEmailWhenNoSession(t *testing.T) {
 	if countBack(h.sender.sent) != 1 || len(h.sender.sent) != 1 {
 		t.Fatalf("want exactly one back email, got %v", h.subjects())
 	}
-	if !strings.Contains(h.sender.sent[0].Body, "Nothing to resume.") {
+	if !strings.Contains(h.sender.sent[0].Body, "No resume was needed.") || !strings.Contains(h.sender.sent[0].Body, "Why: no session was cut off") {
 		t.Fatalf("unexpected back email:\n%s", h.sender.sent[0].Body)
 	}
 	if h.runner.calls != 0 {
@@ -715,7 +709,7 @@ func TestConfirmedResetSendsOneBackEmailWhenDone(t *testing.T) {
 	if countBack(h.sender.sent) != 1 || len(h.sender.sent) != 1 {
 		t.Fatalf("want exactly one back email, got %v", h.subjects())
 	}
-	if !strings.Contains(h.sender.sent[0].Body, "Skipped: already done.") {
+	if !strings.Contains(h.sender.sent[0].Body, "No resume was needed.") || !strings.Contains(h.sender.sent[0].Body, "Why: the task was already done") {
 		t.Fatalf("unexpected back email:\n%s", h.sender.sent[0].Body)
 	}
 }
@@ -733,7 +727,7 @@ func TestConfirmedResetSendsOneBackEmailWhenStuck(t *testing.T) {
 	if countBack(h.sender.sent) != 1 || len(h.sender.sent) != 1 {
 		t.Fatalf("want exactly one back email, got %v", h.subjects())
 	}
-	if !strings.Contains(h.sender.sent[0].Body, "Skipped: looked stuck.") {
+	if !strings.Contains(h.sender.sent[0].Body, "No resume was needed.") || !strings.Contains(h.sender.sent[0].Body, "Why: the agent looked stuck") {
 		t.Fatalf("unexpected back email:\n%s", h.sender.sent[0].Body)
 	}
 }
@@ -775,29 +769,6 @@ func TestEnqueueUsesEngineClock(t *testing.T) {
 	}
 	if _, err := h.db.ClaimEmail(context.Background(), engineNow, time.Minute); err != nil {
 		t.Fatalf("email stamped with the real clock is not due: %v", err)
-	}
-}
-
-func TestResumeStartFailureSendsFinishEmail(t *testing.T) {
-	h := newHarness(t)
-	h.runner.err = errors.New("spawn failed")
-	h.step(t)
-
-	h.engine.Now = func() time.Time { return h.now.Add(3 * time.Minute) }
-	h.provider.snapshot.ObservedAt = h.now.Add(3 * time.Minute)
-	h.provider.snapshot.Windows[0].UsedPercent = 0
-	h.provider.snapshot.Windows[0].ResetsAt = h.now.Add(5 * time.Hour)
-	h.step(t)
-
-	if len(h.sender.sent) != 2 {
-		t.Fatalf("want a back email and a finish email, got %v", h.subjects())
-	}
-	last := h.sender.sent[len(h.sender.sent)-1]
-	if !strings.Contains(last.Subject, "finished") {
-		t.Fatalf("expected a finish email, got %q", last.Subject)
-	}
-	if !strings.Contains(last.Body, "could not start") || !strings.Contains(last.Body, "spawn failed") {
-		t.Fatalf("finish email missing the start failure:\n%s", last.Body)
 	}
 }
 
@@ -882,7 +853,7 @@ func TestSimulateSendsSkipEmailBeforeReturning(t *testing.T) {
 	if len(h.sender.sent) != 1 {
 		t.Fatalf("want one back email before Simulate returns, got %v", h.subjects())
 	}
-	if !strings.Contains(h.sender.sent[0].Body, "Skipped: already done.") {
+	if !strings.Contains(h.sender.sent[0].Body, "No resume was needed.") || !strings.Contains(h.sender.sent[0].Body, "Why: the task was already done") {
 		t.Fatalf("unexpected email:\n%s", h.sender.sent[0].Body)
 	}
 	if !strings.HasPrefix(h.sender.sent[0].Subject, "[SIMULATED] ") {
