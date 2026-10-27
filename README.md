@@ -68,7 +68,7 @@ Every Claude, Codex, and probe process is placed in a kill-on-close sandbox, so 
 
 On Windows the process runs inside a Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`: it is started suspended, assigned to the job, then resumed, and Windows closes the job handle when CarryOn exits. Timeouts use `TerminateJobObject`, not `taskkill`.
 
-On macOS and Linux the process gets its own process group, and a timeout, cancellation, or CarryOn shutdown sends `SIGKILL` to the whole group. On Linux the child also sets `Pdeathsig`, so the kernel kills it if CarryOn dies without cleaning up.
+On macOS and Linux the process gets its own process group, and a timeout, cancellation, or CarryOn shutdown sends `SIGKILL` to the whole group. The group is also killed as soon as the agent exits, so background processes it started (a dev server, a watcher) do not outlive the run. On Linux the child also sets `Pdeathsig`, so the kernel kills it if CarryOn dies without cleaning up. CarryOn records each running agent's process group, and on the next start it kills any group a crash left behind, as long as the machine has not rebooted since.
 
 If the sandbox cannot be created or assigned, CarryOn refuses to start the agent.
 
@@ -143,6 +143,7 @@ The id is the one Claude prints when you exit. Or wait 2 minutes and run `./carr
   - **Windows:** run it from PowerShell opened with "Run as administrator" to get the hidden S4U task. Without admin you get a task that shows a console window; minimise it, don't close it.
   - **macOS:** writes `~/Library/LaunchAgents/dev.carryon.plist` and loads it with `launchctl`; it starts at login and restarts if it exits.
   - **Linux:** writes `~/.config/systemd/user/carryon.service` and enables it with `systemctl --user`; it restarts on failure. A user systemd manager must be running (a normal login session).
+  - **macOS and Linux:** the service records the `PATH` of the shell you run `service install` from, because launchd and systemd start programs with a minimal `PATH` that misses `~/.local/bin`, Homebrew and npm folders. Run it from a terminal where `claude` and `codex` work, and run it again if you move them.
 - Start and stop it:
 
 ```sh
